@@ -134,6 +134,10 @@ def build_option_view(bundle: ForecastBundle, horizon_key: str = "1w") -> dict[s
         forecast = bundle.forecasts.get(key, {}).get(horizon_key)
         if forecast is None:
             continue
+        # Deribit contracts settle against Deribit's own index, so that is the
+        # correct anchor for valuing them -- not the Yahoo print the forecasts
+        # were rebased onto, which can differ by a few basis points.
+        forecast = forecast.rebased(index)
         try:
             valued = options.value_chain_under_model(enriched, forecast, rate, index)
             per_model[key] = {
@@ -223,14 +227,16 @@ class Engine:
         features = build_features(completed)
         context = build_context(daily, features=features)
 
-        bundle = run_all(context, HORIZONS, N_PATHS, RANDOM_SEED, models=self._models)
-        errors.update(bundle.errors)
-
         try:
             market = data.market_snapshot()
         except Exception as exc:
             market = {"price": context.spot, "as_of": context.as_of}
             errors["market"] = str(exc)
+
+        live_spot = float(market.get("price") or context.spot)
+        bundle = run_all(context, HORIZONS, N_PATHS, RANDOM_SEED,
+                         models=self._models, live_spot=live_spot)
+        errors.update(bundle.errors)
 
         option_view = build_option_view(bundle, horizon_key="1w")
         if option_view.get("error"):

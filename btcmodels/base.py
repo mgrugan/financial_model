@@ -288,6 +288,45 @@ class ModelForecast:
         tail = rets[rets <= cutoff]
         return float(tail.mean()) * 100.0 if tail.size else float(cutoff) * 100.0
 
+    def rebased(self, new_spot: float) -> "ModelForecast":
+        """Re-anchor the same *return* distribution onto a different price.
+
+        The models are fitted on close-to-close returns, so a forecast is
+        produced from the last completed daily close.  The option book, and the
+        price a reader sees, are live.  Comparing a distribution centred on a
+        stale close against live strikes injects the whole intraday move as a
+        fake directional signal -- a 1.9% gap on a one-week option is about a
+        third of a standard deviation, which is enough to make every put look
+        underpriced and every call overpriced.
+
+        Scaling is multiplicative, so every probability statement carries over
+        exactly: ``P(rebased > new_spot) == P(original > old_spot)``.  The
+        assumption being made is that the model's return distribution applies
+        from now rather than from the close, which is the standard treatment
+        and strictly better than the alternative of ignoring the gap.
+        """
+        if not np.isfinite(new_spot) or new_spot <= 0:
+            return self
+        ratio = new_spot / self.spot
+        if abs(ratio - 1.0) < 1e-9:
+            return self
+        return ModelForecast(
+            model_key=self.model_key,
+            model_name=self.model_name,
+            family=self.family,
+            horizon_key=self.horizon_key,
+            horizon_days=self.horizon_days,
+            spot=float(new_spot),
+            terminal_prices=self.terminal_prices * ratio,
+            p_up=self.p_up,
+            p_up_stderr=self.p_up_stderr,
+            diagnostics={**self.diagnostics,
+                         "rebased_from_spot": self.spot,
+                         "rebased_to_spot": float(new_spot),
+                         "rebase_pct": (ratio - 1.0) * 100.0},
+            notes=self.notes,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         payload = {
             "model_key": self.model_key,

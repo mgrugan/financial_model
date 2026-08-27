@@ -48,6 +48,8 @@ def main() -> int:
           f"24h {market.get('change_24h', 0):+.2f}%   "
           f"7d {market.get('change_7d', 0):+.2f}%   "
           f"30d {market.get('change_30d', 0):+.2f}%")
+    print(f"  Model anchor   forecasts are close-to-close return distributions, "
+          f"re-anchored onto the live price")
     print(f"  Realised vol   30d {market.get('realised_vol_30d', 0):.1f}%   "
           f"90d {market.get('realised_vol_90d', 0):.1f}%   (annualised)")
     print(f"  History        {market.get('n_bars', 0):,} daily bars from "
@@ -62,7 +64,7 @@ def main() -> int:
         consensus = snapshot.bundle.consensus[horizon_key]
 
         header(f"DIRECTION — {HORIZON_LABELS[horizon_key].upper()}")
-        print(f"  {'MODEL':<34}{'DIR':<6}{'P(UP)':>8}{'±':>7}   "
+        print(f"  {'MODEL':<36}{'DIR':<6}{'P(UP)':>8}{'±':>7}   "
               f"{'E[RET]':>9}{'MEDIAN':>11}{'90% BAND':>23}{'VOL':>7}   TRACK RECORD")
         print(f"  {THIN}")
 
@@ -79,13 +81,13 @@ def main() -> int:
                 verdict = f"SKILL  acc {rel['accuracy_pct']:.1f}% vs {rel['always_up_accuracy_pct']:.1f}%, AUC {rel['auc']:.3f}"
             else:
                 verdict = f"none   acc {rel['accuracy_pct']:.1f}% vs {rel['always_up_accuracy_pct']:.1f}%, AUC {rel['auc']:.3f}"
-            print(f"    {f.model_name:<32}{f.direction:<6}{f.p_up * 100:>7.2f}%"
+            print(f"    {f.model_name[:33]:<34}{f.direction:<6}{f.p_up * 100:>7.2f}%"
                   f"{f.p_up_stderr * 100:>6.2f}   {f.expected_return:>+8.2f}%"
                   f"{q['q50']:>11,.0f}   ${q['q05']:>9,.0f}–${q['q95']:>9,.0f}"
                   f"{f.annualised_vol:>6.0f}%   {verdict}")
 
         print(f"  {THIN}")
-        print(f"    {'CONSENSUS':<32}{consensus['direction']:<6}"
+        print(f"    {'CONSENSUS':<34}{consensus['direction']:<6}"
               f"{consensus['p_up'] * 100:>7.2f}%{'':>6}   {'':>9}"
               f"{consensus['median_price']:>11,.0f}   "
               f"${consensus['q05']:>9,.0f}–${consensus['q95']:>9,.0f}"

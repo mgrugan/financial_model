@@ -154,8 +154,16 @@ def _consensus(forecasts: list[ModelForecast],
 
 def run_all(context: MarketContext, horizons: dict[str, int], n_paths: int,
             seed: int, models: dict[str, BaseModel] | None = None,
-            weights: dict[str, float] | None = None) -> ForecastBundle:
-    """Fit and forecast every model. One model failing never sinks the rest."""
+            weights: dict[str, float] | None = None,
+            live_spot: float | None = None) -> ForecastBundle:
+    """Fit and forecast every model. One model failing never sinks the rest.
+
+    ``live_spot`` re-anchors every forecast onto the current price.  Models are
+    fitted on close-to-close returns and so forecast from the last completed
+    daily bar; leaving them there would make the intraday move since that close
+    read as a directional signal everywhere downstream, most damagingly in the
+    option valuations, which are compared against a live book.
+    """
     models = models or build_all()
     forecasts: dict[str, dict[str, ModelForecast]] = {}
     timings: dict[str, float] = {}
@@ -171,8 +179,11 @@ def run_all(context: MarketContext, horizons: dict[str, int], n_paths: int,
             per_horizon = {}
             for horizon_key, horizon_days in horizons.items():
                 rng = np.random.default_rng(seed + 977 * horizon_days + stable_hash(key) % 10_000)
-                per_horizon[horizon_key] = model.forecast(
+                forecast = model.forecast(
                     context, horizon_key, horizon_days, n_paths, rng)
+                if live_spot:
+                    forecast = forecast.rebased(live_spot)
+                per_horizon[horizon_key] = forecast
             forecasts[key] = per_horizon
         except Exception as exc:
             log.exception("model %s failed", key)
