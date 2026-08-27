@@ -288,8 +288,21 @@ class LSTMModel(SupervisedModel):
         return X.reshape(len(X), self.seq_len, n_feat)
 
     # -- SupervisedModel hooks ---------------------------------------------
+    def purge_gap(self, horizon_days: int) -> int:
+        # A 24-day input window means the last training row's inputs overlap the
+        # next block's inputs by up to seq_len - 1 days, on top of the label
+        # overlap. The point-feature gap of `horizon_days` alone leaves roughly
+        # 7% of a validation block contaminated.
+        return horizon_days + self.seq_len - 1
+
     def _make_estimator(self, horizon_days: int):
-        return {"seeds": list(range(self.n_seeds))}
+        # Seeds vary with the refit and the horizon. Fixed seeds 0,1,2 made the
+        # initialisation-induced component of the fit COMMON to every refit in a
+        # walk-forward, so the whole backtest was conditional on one triple of
+        # random initialisations rather than averaging over them.
+        base = abs(hash((str(self._context_stamp), horizon_days))) % 100_000
+        return {"seeds": [base + 7919 * i for i in range(self.n_seeds)],
+                "horizon": horizon_days}
 
     def _fit_estimator(self, estimator, X, y, weights):
         seq = self._reshape(X)
@@ -300,12 +313,18 @@ class LSTMModel(SupervisedModel):
 
         n_val = int(np.clip(len(seq) * 0.15, 100, len(seq) // 4))
         cut = len(seq) - n_val
-        Xtr, ytr, Xva, yva = seq[:cut], y[:cut], seq[cut:], y[cut:]
+        # Purge the boundary: training rows near `cut` have labels reaching into
+        # the validation block AND input windows overlapping it by up to
+        # seq_len - 1 days. Early stopping reads that block, so contamination
+        # there inflates the very statistic used to choose when to stop.
+        purge = self.purge_gap(int(estimator.get("horizon", 1)))
+        train_end = max(cut - purge, 10)
+        Xtr, ytr, Xva, yva = seq[:train_end], y[:train_end], seq[cut:], y[cut:]
 
         nets, epochs, aucs = [], [], []
         for seed in estimator["seeds"]:
-            net = LSTMBinaryClassifier(seq.shape[2], hidden=self.hidden, seed=seed)
-            best = net.fit(Xtr, ytr, Xva, yva, epochs=self.epochs, seed=seed)
+            net = LSTMBinaryClassifier(seq.shape[2], hidden=self.hidden, seed=int(seed))
+            best = net.fit(Xtr, ytr, Xva, yva, epochs=self.epochs, seed=int(seed))
             nets.append(net)
             epochs.append(best)
             aucs.append(getattr(net, "best_val_auc", 0.5))

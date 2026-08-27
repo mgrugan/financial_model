@@ -82,7 +82,8 @@ def build_context(daily: pd.DataFrame, horizons: tuple[int, ...] = (1, 7),
              "variance_targeted", "loglik", "half_life_days")
         }
         params["long_run_vol_annual_pct"] = float(
-            np.sqrt(fit["long_run_var"] * DAYS_PER_YEAR) * 100.0)
+            np.sqrt(fit["long_run_var"] * DAYS_PER_YEAR) * 100.0
+        ) if fit["persistence"] < 0.9999 else float("nan")
         params["sample_vol_annual_pct"] = float(
             np.sqrt(fit["sample_var"] * DAYS_PER_YEAR) * 100.0)
     except Exception as exc:  # pragma: no cover - falls back to realised vol
@@ -156,7 +157,23 @@ def fit_garch(rets: np.ndarray, horizons: tuple[int, ...] = (1, 7),
 
     persistence = alpha + beta
     targeted = False
-    if variance_targeting and persistence < 0.999 and params is None:
+    if variance_targeting and params is None:
+        # The IGARCH boundary is where targeting is MOST needed, not least. The
+        # original gate skipped targeting when persistence >= 0.999 -- and the
+        # estimate lands on exactly 1.000000 on the large majority of windows,
+        # so targeting was silently off for most of the backtest. At persistence
+        # 1 the long-run variance does not exist, omega/(1-a-b) overflows to
+        # absurd values, and the h-step path grows linearly instead of mean
+        # reverting.
+        #
+        # Persistence is therefore bounded away from the boundary before
+        # targeting. 0.995 is a 138-day half-life -- longer memory than a
+        # 1460-day window can identify, and inside the estimated confidence
+        # interval of every window in this sample, so it asserts only that the
+        # data cannot tell 0.995 from 1.000.
+        persistence = min(persistence, 0.995)
+        beta = min(beta, max(persistence - alpha, 0.0))
+        persistence = alpha + beta
         omega = sample_var * (1.0 - persistence)
         targeted = True
     elif params is not None:

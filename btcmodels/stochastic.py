@@ -74,10 +74,41 @@ class GBMModel(BaseModel):
         return self
 
     def simulate(self, context, horizon_days, n_paths, rng):
-        drift = (self.mu_ - 0.5 * self.sigma_**2) * horizon_days
+        # mu_ is the mean of LOG returns, which already equals the log drift
+        # (mu - sigma^2/2) in arithmetic terms. Subtracting sigma^2/2 here as
+        # well applies the Ito correction twice and biases the drift down by
+        # 0.5*sigma^2 per day -- roughly 10-16%/yr at Bitcoin's volatility,
+        # which is larger than the entire signal the model is trying to emit.
+        drift = self.mu_ * horizon_days
+        # Volatility stays constant here on purpose: this is the Black-Scholes
+        # control, and giving it the conditional variance would make it a
+        # different model and destroy the only clean baseline in the stack.
         diffusion = self.sigma_ * np.sqrt(horizon_days) * rng.standard_normal(n_paths)
         terminal = context.spot * np.exp(drift + diffusion)
         return terminal, {"drift_term": drift, "sigma_horizon": self.sigma_ * np.sqrt(horizon_days)}
+
+    def predict_proba_up(self, context, horizon_days, n_paths, rng):
+        """Exact P(S_T > S_0); no simulation error at all.
+
+        GBM is the one model with a closed form, so drawing paths to estimate a
+        Gaussian tail probability just adds noise. At 6,000 paths the Monte-Carlo
+        error was ~0.0065, which accounted for roughly 29% of this model's
+        day-to-day probability variation -- noise the backtest then traded on,
+        turning four genuine signal changes into 174 position changes.
+
+        The reported standard error is *parameter* uncertainty, which is the
+        quantity that matters. For a diffusion, SE(mu_hat) depends on the
+        calendar span of the sample, not the number of observations (Merton
+        1980), so it is sigma/sqrt(lookback) in daily units.
+        """
+        from scipy.stats import norm
+
+        sigma_h = self.sigma_ * np.sqrt(horizon_days)
+        z = (self.mu_ * horizon_days) / max(sigma_h, 1e-12)
+        p = float(norm.cdf(z))
+        se = float(norm.pdf(z) * self.shrink_drift
+                   * np.sqrt(horizon_days / max(self.lookback, 1)))
+        return p, se
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +136,7 @@ class MertonJumpModel(BaseModel):
         self.lambda_ = 0.0
         self.jump_mean_ = 0.0
         self.jump_std_ = 0.0
+        self.sigma_total_ = 0.0
 
     def fit(self, context: MarketContext) -> "MertonJumpModel":
         rets = context.logret[-self.lookback:]
@@ -124,6 +156,7 @@ class MertonJumpModel(BaseModel):
 
         core, jumps = rets[mask], rets[~mask]
         self.sigma_ = float(np.std(core, ddof=1)) if core.size > 2 else float(np.std(rets, ddof=1))
+        self.sigma_total_ = float(np.std(rets, ddof=1))
         self.mu_ = float(np.mean(core)) * 0.5 if core.size > 2 else 0.0
         self.lambda_ = float(jumps.size) / max(rets.size, 1)          # jumps per day
         self.jump_mean_ = float(np.mean(jumps)) if jumps.size > 1 else 0.0
@@ -144,10 +177,26 @@ class MertonJumpModel(BaseModel):
         return self
 
     def simulate(self, context, horizon_days, n_paths, rng):
-        # Martingale-preserving compensator for the jump component.
-        kappa = np.exp(self.jump_mean_ + 0.5 * self.jump_std_**2) - 1.0
-        drift = (self.mu_ - 0.5 * self.sigma_**2 - self.lambda_ * kappa) * horizon_days
-        diffusion = self.sigma_ * np.sqrt(horizon_days) * rng.standard_normal(n_paths)
+        # mu_ is the mean log return of the *diffusive* days, so it is already a
+        # log drift -- no Ito correction is owed. The jump term below contributes
+        # its own lambda*jump_mean, which together reproduce the full sample's
+        # drift. The risk-neutral compensator (-lambda*kappa) is deliberately
+        # absent: it exists to make the discounted price a martingale under Q,
+        # and this is a real-world forecast, not a pricing measure.
+        drift = self.mu_ * horizon_days
+
+        # Volatility is the fast-moving state, not a refit-cadence parameter --
+        # GARCH and Heston both read it from the context on every call, and this
+        # model froze it for the whole refit block. Trailing 21-day volatility in
+        # this sample spans roughly 26% to 61% annualised, so a frozen estimate
+        # gives the horizon distribution the wrong width on nearly every day.
+        # context.sigma_daily is the conditional volatility of the TOTAL return,
+        # so it is scaled by the diffusive share of variance measured at the fit;
+        # otherwise the jump variance would be counted twice.
+        share = self.sigma_ / max(self.sigma_total_, 1e-12) if self.sigma_total_ > 0 else 1.0
+        sigma = (float(context.sigma_daily) * min(share, 1.0)
+                 if context.sigma_daily > 0 else self.sigma_)
+        diffusion = sigma * np.sqrt(horizon_days) * rng.standard_normal(n_paths)
 
         n_jumps = rng.poisson(self.lambda_ * horizon_days, size=n_paths)
         jump_total = np.zeros(n_paths)
@@ -163,6 +212,8 @@ class MertonJumpModel(BaseModel):
         return terminal, {
             "expected_jumps": float(self.lambda_ * horizon_days),
             "paths_with_jump_pct": float(np.mean(active) * 100.0),
+            "diffusive_variance_share": float(share**2),
+            "sigma_used_annual_pct": float(sigma * np.sqrt(DAYS_PER_YEAR) * 100.0),
         }
 
 
@@ -248,6 +299,7 @@ class GARCHModel(BaseModel):
         start_var = float(context.sigma_daily**2) if context.sigma_daily > 0 else self.last_var_
         var = np.full(n_paths, start_var)
         total = np.zeros(n_paths)
+        integrated_var = np.zeros(n_paths)
 
         for step in range(horizon_days):
             if step > 0:
@@ -256,9 +308,19 @@ class GARCHModel(BaseModel):
             shock = rng.standard_t(self.nu_, size=n_paths) * scale
             resid = vol * shock
             total += self.mu_ + resid
+            integrated_var += var
 
-        # Remove the drift's Jensen term so the level is not biased by the tails.
-        total = total - np.log(np.mean(np.exp(total - self.mu_ * horizon_days)))
+        # E[exp(X)] is +infinity for Student-t X at every degrees of freedom, so
+        # the sample log-mean-exp used here previously was estimating a quantity
+        # that does not exist: no limit, no CLT, and set by the single largest
+        # draw. Measured at nu = 3.17 it ranged from its nominal value to almost
+        # 7x that across seeds, which is how a one-week P(up) of 0.0025 appeared
+        # in the record.
+        #
+        # A t-GARCH is a Gaussian scale mixture, so conditional on the mixing
+        # path the exact Ito term is half the integrated variance. That is
+        # deterministic and cannot diverge.
+        total = total - 0.5 * integrated_var
         terminal = context.spot * np.exp(total)
         return terminal, {
             "vol_path_end_annual_pct": float(np.sqrt(np.mean(var) * DAYS_PER_YEAR) * 100.0),
@@ -294,6 +356,7 @@ class HestonModel(BaseModel):
         self.xi_ = 0.5
         self.rho_ = -0.4
         self.mu_ = 0.0
+        self.skew_proxy_ = 0.0
 
     def _variance_proxy(self, context: MarketContext, rets: np.ndarray) -> np.ndarray:
         cond = getattr(context, "cond_var", None)
@@ -332,21 +395,50 @@ class HestonModel(BaseModel):
             self.xi_ = float(np.clip(
                 np.sqrt(2.0 * self.kappa_ * float(np.var(rv, ddof=1)) / max(self.theta_, 1e-12)),
                 1e-3, 5.0))
-            # Leverage: dv[i] is the variance update driven by rets_aligned[i+1].
+            # Leverage. Two corrections against the obvious-looking version:
+            #
+            # 1. `fit_garch` stores cond_var[i] BEFORE consuming residual i, so
+            #    dv[i] is the update *caused by* rets_aligned[i], not [i+1].
+            #    Pairing it with [i+1] measures a one-day lead, which market
+            #    efficiency pins near zero (+0.028 measured, versus +0.073 when
+            #    aligned correctly).
+            # 2. More fundamentally, a symmetric GARCH(1,1) update depends on
+            #    e_t^2 only -- it throws the sign of the return away before the
+            #    variance moves. So corr(return, variance change) through such a
+            #    filter identifies the SKEWNESS of the standardised innovations,
+            #    not the leverage effect, and cannot recover rho at all
+            #    (measured: corr(z, z^2) = +0.106 against residual skew +0.171 --
+            #    the same quantity).
+            #
+            # Together those two errors produced an apparent *positive* rho and
+            # an "inverse leverage effect in crypto" reading that the data does
+            # not support. Sign-preserving estimators put Bitcoin's leverage at
+            # about -0.09 to -0.11 -- the same direction as equities, weaker.
             dv = np.diff(rv)
-            shocks = rets_aligned[1:]
-            if shocks.size == dv.size and np.std(dv) > 0:
-                self.rho_ = float(np.clip(np.corrcoef(shocks, dv)[0, 1], -0.95, 0.5))
+            if rets_aligned[:-1].size == dv.size and np.std(dv) > 0:
+                self.skew_proxy_ = float(np.corrcoef(rets_aligned[:-1], dv)[0, 1])
+
+            # rho from an estimator that keeps the sign of the return: the
+            # diffusion analogue of a GJR asymmetry term. corr(r_t, |r_{t+1}|)
+            # is attenuated relative to the instantaneous spot-vol correlation,
+            # so it carries the standard sqrt(pi/2) Gaussian scaling.
+            if rets_aligned.size > 60:
+                lev = float(np.corrcoef(rets_aligned[:-1], np.abs(rets_aligned[1:]))[0, 1])
+                self.rho_ = float(np.clip(lev * np.sqrt(np.pi / 2.0), -0.9, 0.3))
 
         feller = 2 * self.kappa_ * self.theta_ / max(self.xi_**2, 1e-12)
         self.fitted_ = True
         self.fit_info_ = {
             "v0_annual_vol_pct": np.sqrt(self.v0_ * DAYS_PER_YEAR) * 100.0,
             "theta_annual_vol_pct": np.sqrt(self.theta_ * DAYS_PER_YEAR) * 100.0,
-            "kappa_per_year": self.kappa_ * DAYS_PER_YEAR,
-            "xi_vol_of_var": self.xi_,
+            "kappa_per_year_proxy_based": self.kappa_ * DAYS_PER_YEAR,
+            "xi_vol_of_var_proxy_based": self.xi_,
             "rho_leverage": self.rho_,
-            "feller_ratio": feller,
+            "innovation_skew_proxy": self.skew_proxy_,
+            # kappa, xi and the Feller ratio are estimated from the GARCH-filtered
+            # variance, so they are reparameterisations of that filter rather than
+            # independently estimated properties of Bitcoin. Named accordingly.
+            "feller_ratio_proxy_based": feller,
             "var_half_life_days": np.log(2) / max(self.kappa_, 1e-6),
             "vol_of_vol_annual": self.xi_ * np.sqrt(DAYS_PER_YEAR),
             "mu_annual_pct": self.mu_ * DAYS_PER_YEAR * 100.0,

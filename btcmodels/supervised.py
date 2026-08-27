@@ -213,14 +213,25 @@ class SupervisedModel(BaseModel):
             X, y, fwd = X.iloc[-self.max_train_rows:], y.iloc[-self.max_train_rows:], fwd.iloc[-self.max_train_rows:]
         return X, y, fwd
 
+    def purge_gap(self, horizon_days: int) -> int:
+        """Rows to drop between a training block and the block after it.
+
+        For a point-feature model the only contamination channel is the label
+        window, so the gap is the horizon. Models whose input is a *window* need
+        more: their last training row's inputs overlap the next block's inputs.
+        Subclasses widen this.
+        """
+        return horizon_days
+
     def _fit_calibrator(self, Xv: np.ndarray, yv: np.ndarray, weights: np.ndarray,
                         horizon_days: int) -> tuple[PlattCalibrator, int]:
         """Fit Platt scaling on pooled out-of-sample scores."""
         calibrator = PlattCalibrator()
         if self.calib_folds > 1:
-            folds = purged_folds(len(Xv), self.calib_folds, horizon_days)
+            folds = purged_folds(len(Xv), self.calib_folds, self.purge_gap(horizon_days))
         else:
-            train_slice, calib_slice = chronological_split(len(Xv), self.calib_frac, horizon_days)
+            train_slice, calib_slice = chronological_split(
+                len(Xv), self.calib_frac, self.purge_gap(horizon_days))
             folds = [(train_slice, calib_slice)]
 
         scores, labels, fold_weights = [], [], []

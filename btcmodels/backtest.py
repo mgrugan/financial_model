@@ -67,6 +67,36 @@ def _auc(y: np.ndarray, score: np.ndarray) -> float:
     return float((ranks[y > 0].sum() - pos * (pos + 1) / 2.0) / (pos * neg))
 
 
+def _auc_stderr(auc: float, n_pos: float, n_neg: float) -> float:
+    """Hanley-McNeil standard error of an AUC.
+
+    Fed *effective* counts rather than raw ones. With a fixed-horizon label on
+    uniformly spaced bars, every interior observation shares ``h - 1`` of its
+    ``h`` label days with its neighbour, so average uniqueness is exactly ``1/h``
+    and the independent sample size is ``n/h``. Using the nominal count here
+    understates the standard error by a factor of ``sqrt(h)`` -- at h=7 that is
+    2.6x, which is the difference between "reliably anti-predictive" and
+    "indistinguishable from a coin flip".
+    """
+    if not np.isfinite(auc) or n_pos < 2 or n_neg < 2:
+        return float("nan")
+    q1 = auc / (2.0 - auc)
+    q2 = 2.0 * auc**2 / (1.0 + auc)
+    var = (auc * (1 - auc)
+           + (n_pos - 1) * (q1 - auc**2)
+           + (n_neg - 1) * (q2 - auc**2)) / (n_pos * n_neg)
+    return float(np.sqrt(max(var, 0.0)))
+
+
+def _sharpe_stderr(sharpe: float, n_periods: int, periods_per_year: float) -> float:
+    """Lo (2002) standard error of an annualised Sharpe ratio."""
+    if n_periods < 4 or not np.isfinite(sharpe):
+        return float("nan")
+    per_period = sharpe / np.sqrt(periods_per_year)
+    se = np.sqrt((1.0 + 0.5 * per_period**2) / n_periods)
+    return float(se * np.sqrt(periods_per_year))
+
+
 def _max_drawdown(equity: np.ndarray) -> float:
     peak = np.maximum.accumulate(equity)
     return float(np.min(equity / peak - 1.0)) * 100.0
@@ -189,8 +219,18 @@ def score(model_key: str, model_name: str, family: str, horizon_key: str, horizo
     else:
         conf_accuracy, conf_n = float("nan"), 0
 
+    # Independent-observation count. Overlapping labels mean the nominal row
+    # count is not the sample size for any inferential purpose.
+    n_eff = len(p) / max(horizon_days, 1)
+    auc_value = _auc(y, p)
+    n_pos_eff = float(y.sum()) / max(horizon_days, 1)
+    n_neg_eff = float((1 - y).sum()) / max(horizon_days, 1)
+    auc_se = _auc_stderr(auc_value, n_pos_eff, n_neg_eff)
+    accuracy_se = float(np.sqrt(0.25 / max(n_eff, 1)))
+
     metrics = {
         "n": int(len(p)),
+        "n_effective": float(n_eff),
         "accuracy_pct": accuracy * 100.0,
         "base_rate_pct": base_rate * 100.0,
         "always_up_accuracy_pct": always_up * 100.0,
@@ -199,7 +239,13 @@ def score(model_key: str, model_name: str, family: str, horizon_key: str, horizo
         "brier_skill": 1.0 - brier / brier_base if brier_base > 0 else float("nan"),
         "log_loss": logloss,
         "log_loss_skill": 1.0 - logloss / logloss_base if logloss_base > 0 else float("nan"),
-        "auc": _auc(y, p),
+        "auc": auc_value,
+        "auc_se": auc_se,
+        "auc_ci_low": auc_value - 1.96 * auc_se if np.isfinite(auc_se) else float("nan"),
+        "auc_ci_high": auc_value + 1.96 * auc_se if np.isfinite(auc_se) else float("nan"),
+        "auc_beats_chance": bool(np.isfinite(auc_se) and auc_value - 1.96 * auc_se > 0.5),
+        "accuracy_se_pp": accuracy_se * 100.0,
+        "edge_t_stat": ((accuracy - always_up) / accuracy_se) if accuracy_se > 0 else float("nan"),
         "mean_p_up": float(p.mean()),
         "p_up_std": float(p.std(ddof=1)) if len(p) > 1 else 0.0,
         "confident_third_accuracy_pct": conf_accuracy * 100.0,
@@ -207,13 +253,19 @@ def score(model_key: str, model_name: str, family: str, horizon_key: str, horizo
         "start": str(pd.Timestamp(dates[0]).date()),
         "end": str(pd.Timestamp(dates[-1]).date()),
     }
+    strategy = _strategy(p, np.asarray(fwd_logret), horizon_days, cost_bps)
+    if strategy:
+        strategy["sharpe_se"] = _sharpe_stderr(
+            strategy.get("sharpe", float("nan")), strategy.get("n_trades", 0),
+            DAYS_PER_YEAR / horizon_days)
+
     return BacktestResult(
         model_key=model_key, model_name=model_name, family=family,
         horizon_key=horizon_key, horizon_days=horizon_days,
         dates=dates, p_up=p, y_true=y, fwd_logret=np.asarray(fwd_logret),
         metrics=metrics,
         calibration=_calibration_table(p, y),
-        strategy=_strategy(p, np.asarray(fwd_logret), horizon_days, cost_bps),
+        strategy=strategy,
     )
 
 

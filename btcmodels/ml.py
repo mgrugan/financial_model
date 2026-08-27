@@ -220,10 +220,16 @@ class MLPModel(SupervisedModel):
         "on its initialisation."
     )
 
-    # Recency is applied as a rectangular window rather than exponential weights:
-    # sklearn's MLP has no sample_weight hook, and weighted resampling would put
-    # duplicate rows on both sides of the validation split.
-    max_train_rows = 2555          # ~7 years
+    # An earlier version claimed sklearn's MLP had no sample_weight hook and
+    # substituted a rectangular window. That was wrong -- MLPClassifier.fit and
+    # .partial_fit both accept sample_weight in the installed version -- and it
+    # meant the recency weights computed upstream were silently discarded for
+    # this model while its own Platt calibrator still used them, so estimator
+    # and calibration were trained under different weightings. The exponential
+    # kernel is also the better estimator on its own merits: a rectangular
+    # window weights a seven-year-old row exactly like yesterday's and then
+    # drops it off a cliff.
+    max_train_rows = 2555          # kept only as a compute cap
     val_fraction = 0.12
     max_epochs = 220
     patience = 25
@@ -249,7 +255,8 @@ class MLPModel(SupervisedModel):
             for seed in range(self.n_seeds)
         ]
 
-    def _train_member(self, net: MLPClassifier, Xtr, ytr, Xva, yva) -> tuple[MLPClassifier, int]:
+    def _train_member(self, net: MLPClassifier, Xtr, ytr, Xva, yva,
+                      wtr=None, wva=None) -> tuple[MLPClassifier, int]:
         """Adam with early stopping on a *chronological* validation tail.
 
         sklearn's own ``early_stopping`` carves out its validation set with a
@@ -261,9 +268,11 @@ class MLPModel(SupervisedModel):
         for epoch in range(1, self.max_epochs + 1):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", ConvergenceWarning)
-                net.partial_fit(Xtr, ytr, classes=classes)
+                net.partial_fit(Xtr, ytr, classes=classes, sample_weight=wtr)
             p = np.clip(net.predict_proba(Xva)[:, 1], 1e-6, 1 - 1e-6)
-            loss = float(-np.mean(yva * np.log(p) + (1 - yva) * np.log(1 - p)))
+            per_row = -(yva * np.log(p) + (1 - yva) * np.log(1 - p))
+            loss = float(np.average(per_row, weights=wva) if wva is not None
+                         else np.mean(per_row))
             if loss < best_loss - 1e-5:
                 best_loss, best_epoch = loss, epoch
                 best_state = ([w.copy() for w in net.coefs_],
@@ -280,10 +289,11 @@ class MLPModel(SupervisedModel):
         n_val = int(np.clip(len(Xs) * self.val_fraction, 100, len(Xs) // 4))
         cut = len(Xs) - n_val
         Xtr, ytr, Xva, yva = Xs[:cut], y[:cut], Xs[cut:], y[cut:]
+        wtr, wva = weights[:cut], weights[cut:]
 
         trained, epochs = [], []
         for net in estimator:
-            net, best_epoch = self._train_member(net, Xtr, ytr, Xva, yva)
+            net, best_epoch = self._train_member(net, Xtr, ytr, Xva, yva, wtr, wva)
             trained.append(net)
             epochs.append(best_epoch)
         ensemble = SeedEnsemble(trained)

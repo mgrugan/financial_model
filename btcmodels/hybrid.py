@@ -284,6 +284,15 @@ class NeuralDriftDiffusionModel(BaseModel):
         params = self._state_params(context, horizon_days)
         shocks = bootstrap_innovations(context, horizon_days, n_paths, rng,
                                        sigma_override=params["sigma_h"], block=2)
+        # bootstrap_innovations centres its sample so that E[exp(shock)] = 1,
+        # which means E[shock] = -sigma^2/2. `drift` is a regression fit on the
+        # forward LOG return, so adding it on top applies the Ito correction a
+        # second time -- worth about 1.4pp of P(up) at one week, and worse, it
+        # makes the direction depend on the *volatility* forecast: a higher
+        # sigma_h pushes P(up) down through a term that has nothing to do with
+        # the drift model. Re-centre in log space so the location is the fitted
+        # drift and nothing else.
+        shocks = shocks - shocks.mean()
         terminal = context.spot * np.exp(params["drift"] + shocks)
         info = dict(self.horizon_info_.get(horizon_days, {}))
         info.update({
