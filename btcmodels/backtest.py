@@ -31,7 +31,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from .base import BaseModel, build_context
+from .base import BaseModel, build_context, stable_hash
 from .config import (
     BACKTEST_COST_BPS,
     BACKTEST_DAYS,
@@ -297,7 +297,7 @@ def run_walk_forward(
                 fwd = float(log_close[j + h] - log_close[j])
                 y = 1.0 if fwd > 0 else 0.0
                 for key, model in live.items():
-                    rng = np.random.default_rng(seed + j * 31 + h * 7 + abs(hash(key)) % 1000)
+                    rng = np.random.default_rng(seed + j * 31 + h * 7 + stable_hash(key) % 1000)
                     try:
                         p, _ = model.predict_proba_up(ctx, h, n_paths, rng)
                     except Exception as exc:

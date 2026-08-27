@@ -425,13 +425,17 @@ def render_backtest(snapshot, theme: str, horizon: str, model_key: str) -> html.
         model_key = next((k for k in MODEL_ORDER if horizon in results.get(k, {})), "")
     result = results[model_key][horizon]
 
-    best = block.loc[block["brier_skill"].idxmax()]
     n_skilled = int(((block["brier_skill"] > 0) & (block["auc"] > 0.5)).sum())
+    scored = block.dropna(subset=["brier_skill"])
+    best_line = ""
+    if not scored.empty:
+        best = scored.loc[scored["brier_skill"].idxmax()]
+        best_line = (f"Best by Brier skill: {best['model']} at "
+                     f"{best['brier_skill']:+.4f} with AUC {best['auc']:.3f}. ")
 
     verdict = callout(
         f"{n_skilled} of {len(block)} models cleared both bars at this horizon "
-        f"(positive Brier skill and AUC above 0.5). Best by Brier skill: "
-        f"{best['model']} at {best['brier_skill']:+.4f} with AUC {best['auc']:.3f}. "
+        f"(positive Brier skill and AUC above 0.5). " + best_line +
         f"Bitcoin rose on {block['base_rate_pct'].iloc[0]:.1f}% of days in this window, "
         f"so any model below {block['always_up_accuracy_pct'].iloc[0]:.1f}% accuracy is "
         f"losing to a strategy that never thinks.",
@@ -630,7 +634,15 @@ def render_options(snapshot, theme: str, model_key: str, greek: str = "theta") -
         "good" if reliability and reliability["has_skill"] else "warn",
         "How much weight this model has earned")
 
-    vol_note = callout(
+    gap = vol["vol_gap_pts"]
+    if not np.isfinite(gap):
+        vol_note = callout(
+            "Market at-the-money implied volatility could not be read for this expiry, "
+            "so the expected values below cannot be separated into a directional view "
+            "and a volatility view. Treat them with extra caution.", "warn",
+            "Read this before the expected values")
+    else:
+        vol_note = callout(
         f"This model's annualised volatility is {vol['model_vol_pct']:.1f}% against a "
         f"market at-the-money implied of {vol['market_atm_iv_pct']:.1f}% — a gap of "
         f"{vol['vol_gap_pts']:+.1f} points. "
@@ -644,7 +656,7 @@ def render_options(snapshot, theme: str, model_key: str, greek: str = "theta") -
            if vol["vol_gap_pts"] < -2 else
            "Model and market broadly agree on volatility, so the expected values below "
            "reflect the model's directional view rather than a volatility bet."),
-        "warn" if abs(vol["vol_gap_pts"]) > 2 else "info",
+        "warn" if abs(gap) > 2 else "info",
         "Read this before the expected values")
 
     selector = dcc.Dropdown(
@@ -704,9 +716,11 @@ def render_options(snapshot, theme: str, model_key: str, greek: str = "theta") -
                 html.Div([
                     html.Div([
                         stat("BTC index", f"${spot:,.0f}"),
-                        stat("ATM implied vol", f"{view['atm_iv_pct']:.1f}%"),
+                        stat("ATM implied vol",
+                             f"{view['atm_iv_pct']:.1f}%"
+                             if np.isfinite(view["atm_iv_pct"]) else "—"),
                         stat("Model vol", f"{vol['model_vol_pct']:.1f}%",
-                             sub=f"{vol['vol_gap_pts']:+.1f} pts vs market"),
+                             sub=f"{gap:+.1f} pts vs market" if np.isfinite(gap) else None),
                         stat("Model direction", forecast.direction,
                              sub=f"P(up) {forecast.p_up * 100:.1f}%",
                              color=direction_color(forecast.p_up, theme)),

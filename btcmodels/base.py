@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import zlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -362,6 +363,17 @@ def bootstrap_innovations(
     # closed-form -0.5*sigma^2 Ito term is not accurate enough, so the drift is
     # solved numerically from the sample itself.
     return total - np.log(np.mean(np.exp(total)))
+
+
+def stable_hash(text: str) -> int:
+    """Process-independent hash for seeding.
+
+    Python's built-in ``hash`` is salted per interpreter run, so using it to
+    derive Monte Carlo seeds makes every restart produce different draws for
+    models that are otherwise fully deterministic.  CRC32 is stable across
+    processes and machines, which is what reproducibility here requires.
+    """
+    return zlib.crc32(text.encode("utf-8")) & 0xFFFFFFFF
 
 
 def prob_stderr(p: float, n: int) -> float:

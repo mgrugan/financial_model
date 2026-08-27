@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from .base import BaseModel, MarketContext, ModelForecast
+from .base import BaseModel, MarketContext, ModelForecast, stable_hash
 from .hybrid import NeuralDriftDiffusionModel
 from .ml import GradientBoostingModel, LogisticModel, MLPModel, RandomForestModel
 from .nn import LSTMModel
@@ -125,7 +125,7 @@ def _consensus(forecasts: list[ModelForecast],
 
     n_up = int(np.sum(probs > 0.5))
     pooled = np.concatenate([
-        np.random.default_rng(abs(hash(f.model_key)) % (2**32)).choice(
+        np.random.default_rng(stable_hash(f.model_key)).choice(
             f.terminal_prices, size=min(8000, f.terminal_prices.size), replace=False)
         for f in forecasts
     ])
@@ -170,7 +170,7 @@ def run_all(context: MarketContext, horizons: dict[str, int], n_paths: int,
             model.fit(context)
             per_horizon = {}
             for horizon_key, horizon_days in horizons.items():
-                rng = np.random.default_rng(seed + 977 * horizon_days + abs(hash(key)) % 10_000)
+                rng = np.random.default_rng(seed + 977 * horizon_days + stable_hash(key) % 10_000)
                 per_horizon[horizon_key] = model.forecast(
                     context, horizon_key, horizon_days, n_paths, rng)
             forecasts[key] = per_horizon
