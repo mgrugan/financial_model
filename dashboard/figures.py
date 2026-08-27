@@ -74,23 +74,31 @@ def probability_bars(forecasts: list, theme: str, consensus: dict | None = None)
     ordered = sorted(forecasts, key=lambda f: (FAMILY_ORDER.index(f.family), -f.p_up))
     names = [f.model_name for f in ordered]
     probs = [f.p_up for f in ordered]
-    errors = [f.p_up_stderr for f in ordered]
-    colors = [family_color(f.family, theme) for f in ordered]
 
+    # One trace per family rather than one trace with a colour list: the four
+    # hues carry meaning, so they need a legend to be readable, and a single
+    # trace cannot produce one. Families stay contiguous on the axis, which is
+    # also the ordering the palette is separation-validated for.
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=names, x=[p - 0.5 for p in probs], base=0.5, orientation="h",
-        marker=dict(color=colors, line=dict(color=t["surface"], width=2)),
-        error_x=dict(type="data", array=errors, color=t["text_muted"],
-                     thickness=1.2, width=3),
-        text=[f"{p * 100:.1f}%  {'UP' if p >= 0.5 else 'DOWN'}" for p in probs],
-        textposition="outside",
-        textfont=dict(color=t["text_secondary"], size=11),
-        hovertemplate=("<b>%{y}</b><br>P(up) = %{x:.1%}"
-                       "<extra></extra>"),
-        customdata=probs,
-        showlegend=False,
-    ))
+    for family in FAMILY_ORDER:
+        members = [f for f in ordered if f.family == family]
+        if not members:
+            continue
+        fig.add_trace(go.Bar(
+            y=[f.model_name for f in members],
+            x=[f.p_up - 0.5 for f in members],
+            base=0.5, orientation="h", name=family,
+            marker=dict(color=family_color(family, theme),
+                        line=dict(color=t["surface"], width=2)),
+            error_x=dict(type="data", array=[f.p_up_stderr for f in members],
+                         color=t["text_muted"], thickness=1.2, width=3),
+            text=[f"{f.p_up * 100:.1f}%  {'UP' if f.p_up >= 0.5 else 'DOWN'}"
+                  for f in members],
+            textposition="outside",
+            textfont=dict(color=t["text_secondary"], size=11),
+            hovertemplate="<b>%{y}</b><br>P(up) = %{x:.1%}<extra>" + family + "</extra>",
+            showlegend=True,
+        ))
     fig.add_vline(x=0.5, line=dict(color=t["border_strong"], width=1.5, dash="dot"))
     if consensus:
         fig.add_vline(x=consensus["p_up"],
@@ -102,15 +110,17 @@ def probability_bars(forecasts: list, theme: str, consensus: dict | None = None)
     lo = min(0.42, min(probs) - 0.04)
     hi = max(0.58, max(probs) + 0.10)
     fig.update_layout(**base_layout(
-        theme, height=max(280, 30 * len(names) + 70),
-        margin=dict(l=210, r=40, t=34, b=40),
+        theme, height=max(280, 30 * len(names) + 96), showlegend=True,
+        margin=dict(l=210, r=40, t=52, b=40),
         xaxis=dict(range=[lo, hi], tickformat=".0%", gridcolor=t["grid"],
                    title=dict(text="Probability the price is higher at the horizon",
                               font=dict(size=11, color=t["text_muted"])),
                    linecolor=t["border"], tickfont=dict(color=t["text_muted"])),
         yaxis=dict(autorange="reversed", gridcolor=TRANSPARENT,
-                   linecolor=TRANSPARENT,
+                   linecolor=TRANSPARENT, categoryorder="array",
+                   categoryarray=names,
                    tickfont=dict(color=t["text_secondary"], size=11)),
+        barmode="overlay",
     ))
     return fig
 

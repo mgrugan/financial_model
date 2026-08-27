@@ -144,8 +144,8 @@ body {
   align-items: center;
 }
 .consensus-headline { text-align: left; }
-.consensus-direction { font-size: 38px; font-weight: 680; letter-spacing: -0.025em; line-height: 1; }
-.consensus-prob { font-family: var(--mono); font-size: 20px; color: var(--text-secondary); margin-top: 4px; }
+.consensus-direction { font-size: 50px; font-weight: 680; letter-spacing: -0.025em; line-height: 1; }
+.consensus-prob { font-family: var(--mono); font-size: 19px; color: var(--text-secondary); margin-top: 4px; }
 .consensus-note { font-size: 12px; color: var(--text-muted); margin-top: 8px; max-width: 40ch; }
 
 /* ---------- model cards ---------- */
@@ -232,6 +232,7 @@ body {
 
 @media (max-width: 780px) {
   .app { padding: 0 14px 48px; }
+  .consensus-direction { font-size: 40px; }
   .masthead { margin: 0 -14px 16px; padding: 12px 14px 0; }
   .consensus { grid-template-columns: 1fr; }
   .price-now { font-size: 23px; }
