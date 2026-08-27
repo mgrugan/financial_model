@@ -70,6 +70,12 @@ BACKTEST_COST_BPS = float(os.environ.get("BTC_COST_BPS", 10.0))  # round-trip co
 # should only be enabled where that CPU is actually available.
 BACKTEST_ON_START = os.environ.get("BTC_BACKTEST_ON_START", "0") == "1"
 
+# How often the web process regenerates the walk-forward artefact once it has
+# one. Render does not allow a disk on a cron job, so a scheduled job cannot
+# hand a file to the web service -- the web service owns the artefact itself.
+# 0 disables regeneration (generate once, then leave it alone).
+BACKTEST_REFRESH_HOURS = float(os.environ.get("BTC_BACKTEST_REFRESH_HOURS", 24))
+
 # --------------------------------------------------------------------------
 # Options
 # --------------------------------------------------------------------------

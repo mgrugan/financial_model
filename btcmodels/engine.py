@@ -27,6 +27,7 @@ from .config import (
     BACKTEST_DAYS,
     BACKTEST_ON_START,
     BACKTEST_REFIT_EVERY,
+    BACKTEST_REFRESH_HOURS,
     CACHE_DIR,
     HORIZONS,
     N_PATHS,
@@ -272,17 +273,34 @@ class Engine:
             self._stop.wait(self.refresh_interval)
 
     # -- optional first-run backtest ---------------------------------------
-    def _run_backtest_once(self) -> None:
-        """Generate the walk-forward artefact if none exists.
+    def _backtest_loop(self) -> None:
+        """Own the walk-forward artefact: generate it, then keep it current.
 
-        Without this a fresh deployment shows an empty backtest tab until the
-        scheduled job first runs.  It uses its own model instances rather than
-        the live ones: the backtester deliberately refits and freezes models as
-        it walks forward, which would corrupt the state the dashboard is serving.
+        Render does not permit a disk on a cron job, so a scheduled job has
+        nowhere to leave a file the web service can read. The web service holds
+        the disk, so it generates the artefact itself -- once on first boot when
+        the disk is empty, and then on a slow schedule.
         """
-        if BACKTEST_CACHE.exists():
-            return
-        log.info("no cached backtest; starting one in the background")
+        while not self._stop.is_set():
+            stale = True
+            if BACKTEST_CACHE.exists():
+                age_h = (time.time() - BACKTEST_CACHE.stat().st_mtime) / 3600.0
+                stale = BACKTEST_REFRESH_HOURS > 0 and age_h >= BACKTEST_REFRESH_HOURS
+            if stale:
+                self._run_backtest_once()
+            if BACKTEST_REFRESH_HOURS <= 0:
+                return
+            # Re-check hourly; the age test above decides whether to do the work.
+            self._stop.wait(3600)
+
+    def _run_backtest_once(self) -> None:
+        """Regenerate the walk-forward artefact.
+
+        Uses its own model instances rather than the live ones: the backtester
+        deliberately refits and freezes models as it walks forward, which would
+        corrupt the state the dashboard is serving.
+        """
+        log.info("generating walk-forward backtest in the background")
         try:
             results = backtest_module.run_walk_forward(
                 data.load_daily(), HORIZONS,
@@ -315,7 +333,7 @@ class Engine:
         self._thread = threading.Thread(target=self._loop, name="btc-refresh", daemon=True)
         self._thread.start()
         if BACKTEST_ON_START:
-            threading.Thread(target=self._run_backtest_once,
+            threading.Thread(target=self._backtest_loop,
                              name="btc-backtest", daemon=True).start()
 
     def stop(self) -> None:

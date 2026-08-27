@@ -276,15 +276,23 @@ python scripts/smoke_test.py
 
 ## Deploying to Render
 
-The repository contains a `render.yaml` blueprint. Point Render at the repo and
-it provisions:
+The repository contains a `render.yaml` blueprint. Point Render at the repo,
+choose **New → Blueprint**, and it provisions a single **web service** running
+`gunicorn app:server --workers 1 --threads 4` with a 1 GB disk.
 
-- a **web service** running `gunicorn app:server --workers 1 --threads 4`
-- a **nightly cron job** re-running the backtest and writing it to a shared disk
+There is deliberately **no cron job**. The natural design would be a nightly job
+regenerating the backtest onto a disk shared with the web service, but Render
+does not allow a disk on a cron job — a scheduled job has nowhere to leave a
+file the web service could read. So the web service, which *can* hold a disk,
+owns the artefact: it generates one on first boot when the disk is empty
+(`BTC_BACKTEST_ON_START=1`) and refreshes it every `BTC_BACKTEST_REFRESH_HOURS`.
+The work runs on a background daemon thread and the heavy numerics release the
+GIL, so serving stays responsive.
 
-A single gunicorn worker is deliberate: the fitted models live in process
-memory, so a second worker would train its own copy of all eleven. Threads
-handle request concurrency.
+A single gunicorn worker is deliberate on two counts: the fitted models live in
+process memory, so a second worker would train its own copy of all eleven; and a
+Render service with a disk cannot scale past one instance anyway, so two workers
+would only race on the same cache files.
 
 **Plan sizing.** A full refresh fits eleven models and takes about a minute on
 two cores. **Standard** (1 CPU / 2 GB) keeps it near that and leaves headroom for
@@ -293,12 +301,12 @@ several minutes and memory is tight. Free additionally spins the instance down
 after 15 minutes idle, discarding every fitted model and making the next visitor
 sit through a cold rebuild.
 
-**The backtest tab is empty until a backtest exists.** The nightly cron job
-fills it, so a fresh deploy shows a "no backtest loaded" notice until 04:20 UTC.
-To fill it immediately, either run `python scripts/run_backtest.py` once from
-the Render Shell, or set `BTC_BACKTEST_ON_START=1` so the web service generates
-one in a background thread on first boot when the disk is empty — that competes
-with request serving for CPU, so only enable it where there is headroom.
+**The backtest takes about 40 minutes to generate.** With
+`BTC_BACKTEST_ON_START=1` (the blueprint default) the web service starts one in
+the background on first boot; the Backtest tab shows a "no backtest loaded"
+notice until it finishes, and everything else works meanwhile. To fill it
+sooner, run `python scripts/run_backtest.py` from the Render Shell. Set
+`BTC_BACKTEST_ON_START=0` if you would rather it never run unattended.
 
 ### Configuration
 
@@ -312,7 +320,8 @@ with request serving for CPU, so only enable it where there is headroom.
 | `BTC_COST_BPS` | `10` | round-trip transaction cost in the backtest |
 | `BTC_OPT_MAX_DTE` | `10` | expiry window for the options page |
 | `BTC_N_JOBS` | `2` | threads for the tree models |
-| `BTC_BACKTEST_ON_START` | `0` | generate a backtest on first boot if none is cached |
+| `BTC_BACKTEST_ON_START` | `0` | generate a backtest on first boot if none is cached (blueprint sets `1`) |
+| `BTC_BACKTEST_REFRESH_HOURS` | `24` | how often the web service regenerates it; `0` = once only |
 
 ---
 

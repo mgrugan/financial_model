@@ -1,18 +1,28 @@
 # Render blueprint.
 #
-#   web    serves the dashboard and refreshes forecasts in a background thread
-#   cron   regenerates the walk-forward backtest nightly onto a shared disk
+# One web service, which owns everything.
+#
+# There is deliberately no cron job here. The natural design would be a nightly
+# job that regenerates the walk-forward backtest onto a shared disk, but Render
+# does not allow a disk on a cron job -- so a scheduled job has nowhere to leave
+# a file the web service could read. The web service holds the disk, so it
+# generates the backtest itself: once on first boot when the disk is empty, then
+# on a slow schedule (BTC_BACKTEST_REFRESH_HOURS). It runs on a background
+# daemon thread, and the heavy numerical work releases the GIL, so serving stays
+# responsive.
 #
 # A single gunicorn worker is deliberate. The fitted models live in process
 # memory, so a second worker would train its own copy of all eleven and roughly
 # double both memory and startup CPU for nothing. Threads handle concurrency.
+# It is also required here: a Render service with a disk cannot scale past one
+# instance, and two workers would race on the same cache files.
 #
 # Plan sizing: a full refresh fits eleven models and takes about a minute on two
 # cores. Standard (1 CPU / 2 GB) keeps that near a minute and leaves headroom for
 # the tree ensembles. Starter (0.5 CPU / 512 MB) will run but refreshes take
 # several minutes and memory is tight; Free additionally spins the instance down
-# after 15 minutes idle, which discards every fitted model and makes the next
-# visitor sit through a cold rebuild.
+# after 15 minutes idle, which discards every fitted model, loses the disk, and
+# makes the next visitor sit through a cold rebuild.
 
 services:
   - type: web
@@ -43,32 +53,14 @@ services:
         value: INFO
       - key: WEB_CONCURRENCY
         value: "1"
-      # Set to "1" to generate a backtest on first boot when the disk is empty,
-      # instead of waiting for the nightly job below. It competes with request
-      # serving for CPU, so leave it off unless the instance has headroom.
+      # Generate the walk-forward backtest on first boot if the disk is empty,
+      # then refresh it on the schedule below. Without this the Backtest tab
+      # stays empty until you run scripts/run_backtest.py from the Render shell.
       - key: BTC_BACKTEST_ON_START
-        value: "0"
-
-  - type: cron
-    name: btc-backtest-nightly
-    runtime: python
-    plan: standard
-    region: oregon
-    schedule: "20 4 * * *"    # 04:20 UTC daily
-    buildCommand: pip install -r requirements.txt
-    startCommand: python scripts/run_backtest.py --quiet
-    disk:
-      name: btc-cache
-      mountPath: /var/data
-      sizeGB: 1
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.15"
-      - key: BTC_CACHE_DIR
-        value: /var/data
+        value: "1"
+      - key: BTC_BACKTEST_REFRESH_HOURS
+        value: "24"           # 0 = generate once and never regenerate
       - key: BTC_BACKTEST_DAYS
         value: "1095"
       - key: BTC_REFIT_EVERY
         value: "45"
-      - key: BTC_N_JOBS
-        value: "2"
