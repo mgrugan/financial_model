@@ -295,6 +295,13 @@ def skill_scatter(summary: pd.DataFrame, theme: str, horizon_key: str) -> go.Fig
                        text="skill: ranks correctly and is calibrated",
                        font=dict(size=10, color=t["text_muted"]))
 
+    # Label placement alternates around the marker in order of proximity, which
+    # keeps eleven points in a narrow band from stacking their names on top of
+    # one another. The full table below carries the exact numbers regardless.
+    positions = ["middle right", "top center", "middle left", "bottom center"]
+    order = block.sort_values(["auc", "brier_skill"]).index
+    slot = {idx: positions[i % len(positions)] for i, idx in enumerate(order)}
+
     for family in FAMILY_ORDER:
         sub = block[block["family"] == family]
         if sub.empty:
@@ -303,8 +310,9 @@ def skill_scatter(summary: pd.DataFrame, theme: str, horizon_key: str) -> go.Fig
             x=sub["auc"], y=sub["brier_skill"], mode="markers+text",
             marker=dict(size=11, color=family_color(family, theme),
                         line=dict(color=t["surface"], width=2)),
-            text=sub["model"], textposition="middle right",
-            textfont=dict(size=10, color=t["text_secondary"]),
+            text=sub["model"],
+            textposition=[slot[i] for i in sub.index],
+            textfont=dict(size=9.5, color=t["text_secondary"]),
             name=family,
             hovertemplate=("<b>%{text}</b><br>AUC %{x:.3f}<br>"
                            "Brier skill %{y:+.4f}<extra></extra>"),
@@ -313,8 +321,8 @@ def skill_scatter(summary: pd.DataFrame, theme: str, horizon_key: str) -> go.Fig
     fig.add_vline(x=0.5, line=dict(color=t["border_strong"], width=1.5, dash="dot"))
     fig.add_hline(y=0.0, line=dict(color=t["border_strong"], width=1.5, dash="dot"))
     fig.update_layout(**base_layout(
-        theme, height=380, showlegend=True,
-        margin=dict(l=70, r=150, t=40, b=52),
+        theme, height=440, showlegend=True,
+        margin=dict(l=76, r=160, t=44, b=56),
         xaxis=dict(title=dict(text="AUC  (0.5 = no ranking ability)",
                               font=dict(size=11, color=t["text_muted"])),
                    gridcolor=t["grid"], linecolor=t["border"],
