@@ -186,6 +186,44 @@ Run with `python scripts/run_backtest.py` (roughly half an hour).
 
 ---
 
+## What the backtest actually found
+
+Across **1,088 walk-forward days** (Aug 2023 – Aug 2026), essentially no model
+demonstrated a reliable directional edge. Only one cleared both bars (positive
+Brier skill *and* AUC above 0.5), and it did so by a margin indistinguishable
+from noise.
+
+The diagnosis is specific rather than vague. The dominant driver of the learned
+models' probabilities was `drawdown` — distance below the running all-time high
+— and the **sign of its relationship to forward returns inverted** between the
+training history and the test window:
+
+| Model | corr(P(up), drawdown) | 1-week AUC |
+|---|---|---|
+| Random Forest | +0.30 | 0.452 |
+| XGBoost | +0.28 | 0.447 |
+| GBM | +0.57 | 0.490 |
+| **LSTM** | **−0.20** | **0.523** |
+
+In the test window `corr(drawdown, forward return) = −0.121`. The tree models had
+learned "near the highs, keep going up" from the 2017 and 2021 bull runs. Every
+model that leaned that way scored below 0.5; the LSTM, the only one whose
+probability leaned the other way, was the only one above 0.5 at one week. Its
+AUC was also unstable across the window (0.607 in the first half, 0.450 in the
+second), which is what an absence of edge looks like when you split it.
+
+This is not a pipeline bug — feature causality is verified bit-identical. It is
+what a genuine regime change looks like from inside a model, and it is the
+single best argument for the design decision that every live probability on this
+dashboard carries its out-of-sample verdict beside it.
+
+**Read the live probabilities in that light.** At the time of writing the
+machine-learning models show 58–66% for the week ahead while their own
+walk-forward AUC over the recent window is below 0.46. The dashboard labels them
+"no out-of-sample edge" for exactly that reason.
+
+---
+
 ## Options analytics
 
 Priced with **Black-76 on each expiry's own forward** rather than Black-Scholes

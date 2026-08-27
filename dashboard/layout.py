@@ -862,6 +862,8 @@ METHOD_NOTES = [
      "costs. What it cannot prove is that any edge survives into the future: it is one "
      "asset over one three-year window, and the models were selected and tuned by "
      "someone who had already seen that history."),
+    ('What the backtest actually found',
+     "Across 1,088 walk-forward days, essentially no model demonstrated a reliable directional edge, and the diagnosis is specific rather than vague. The dominant driver of the learned models' probabilities was `drawdown` -- distance below the running all-time high -- and the sign of its relationship to forward returns inverted between the training history and the test window. The tree models carry a correlation of about +0.3 between their probability and that feature, having learned 'near the highs, keep going up' from the 2017 and 2021 bull runs; over the test window the same feature correlated -0.12 with forward returns. Every model that leaned that way scored below 0.5 AUC, and the LSTM -- the only model whose probability leaned the other way (correlation -0.20) -- was the only one above 0.5 at the one-week horizon. That is not a bug in the pipeline; it is what a genuine regime change looks like from inside a model, and it is the single best argument for why a live probability should never be shown without its track record beside it."),
     ("Model expected value is not a price",
      "Option fair values on this page are discounted expected payoffs under each "
      "model's real-world distribution. That is not an arbitrage-free price and does "
