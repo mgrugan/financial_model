@@ -1,19 +1,24 @@
 # Render blueprint.
 #
-# One web service and one scheduled job:
-#
 #   web    serves the dashboard and refreshes forecasts in a background thread
-#   cron   re-runs the walk-forward backtest nightly and writes it to the disk
+#   cron   regenerates the walk-forward backtest nightly onto a shared disk
 #
 # A single gunicorn worker is deliberate. The fitted models live in process
-# memory; a second worker would train its own copy of all eleven and roughly
-# double both memory and startup CPU for no benefit. Threads handle concurrency.
+# memory, so a second worker would train its own copy of all eleven and roughly
+# double both memory and startup CPU for nothing. Threads handle concurrency.
+#
+# Plan sizing: a full refresh fits eleven models and takes about a minute on two
+# cores. Standard (1 CPU / 2 GB) keeps that near a minute and leaves headroom for
+# the tree ensembles. Starter (0.5 CPU / 512 MB) will run but refreshes take
+# several minutes and memory is tight; Free additionally spins the instance down
+# after 15 minutes idle, which discards every fitted model and makes the next
+# visitor sit through a cold rebuild.
 
 services:
   - type: web
     name: btc-model-dashboard
     runtime: python
-    plan: starter            # the free plan's 512 MB is too tight to fit 11 models
+    plan: standard
     region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:server --workers 1 --threads 4 --timeout 180
@@ -38,11 +43,16 @@ services:
         value: INFO
       - key: WEB_CONCURRENCY
         value: "1"
+      # Set to "1" to generate a backtest on first boot when the disk is empty,
+      # instead of waiting for the nightly job below. It competes with request
+      # serving for CPU, so leave it off unless the instance has headroom.
+      - key: BTC_BACKTEST_ON_START
+        value: "0"
 
   - type: cron
     name: btc-backtest-nightly
     runtime: python
-    plan: starter
+    plan: standard
     region: oregon
     schedule: "20 4 * * *"    # 04:20 UTC daily
     buildCommand: pip install -r requirements.txt

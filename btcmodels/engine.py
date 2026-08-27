@@ -20,9 +20,13 @@ import numpy as np
 import pandas as pd
 
 from . import data, deribit, options
+from . import backtest as backtest_module
 from .backtest import BacktestResult, summary_frame
 from .base import MarketContext, build_context
 from .config import (
+    BACKTEST_DAYS,
+    BACKTEST_ON_START,
+    BACKTEST_REFIT_EVERY,
     CACHE_DIR,
     HORIZONS,
     N_PATHS,
@@ -70,6 +74,10 @@ class Snapshot:
 
     def backtest_results(self) -> dict[str, dict[str, BacktestResult]]:
         return self.backtest.get("results", {})
+
+    def refresh_backtest(self) -> None:
+        """Re-read the cached artefact without rebuilding the whole snapshot."""
+        self.backtest = load_backtest()
 
     def backtest_summary(self) -> pd.DataFrame:
         results = self.backtest_results()
@@ -257,12 +265,52 @@ class Engine:
                 self.last_error = f"{type(exc).__name__}: {exc}"
             self._stop.wait(self.refresh_interval)
 
+    # -- optional first-run backtest ---------------------------------------
+    def _run_backtest_once(self) -> None:
+        """Generate the walk-forward artefact if none exists.
+
+        Without this a fresh deployment shows an empty backtest tab until the
+        scheduled job first runs.  It uses its own model instances rather than
+        the live ones: the backtester deliberately refits and freezes models as
+        it walks forward, which would corrupt the state the dashboard is serving.
+        """
+        if BACKTEST_CACHE.exists():
+            return
+        log.info("no cached backtest; starting one in the background")
+        try:
+            results = backtest_module.run_walk_forward(
+                data.load_daily(), HORIZONS,
+                backtest_days=BACKTEST_DAYS, refit_every=BACKTEST_REFIT_EVERY,
+                progress=lambda msg, frac: log.info("backtest %s", msg),
+            )
+            payload = {
+                "results": results,
+                "generated_at": time.time(),
+                "elapsed_seconds": 0.0,
+                "backtest_days": BACKTEST_DAYS,
+                "refit_every": BACKTEST_REFIT_EVERY,
+                "data_end": str(data.load_daily().index[-1].date()),
+            }
+            BACKTEST_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            with open(BACKTEST_CACHE, "wb") as fh:
+                pickle.dump(payload, fh)
+            log.info("background backtest complete")
+            # Fold the new artefact into the current snapshot immediately.
+            with self._lock:
+                if self._snapshot is not None:
+                    self._snapshot.backtest = load_backtest()
+        except Exception:
+            log.exception("background backtest failed")
+
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="btc-refresh", daemon=True)
         self._thread.start()
+        if BACKTEST_ON_START:
+            threading.Thread(target=self._run_backtest_once,
+                             name="btc-backtest", daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()

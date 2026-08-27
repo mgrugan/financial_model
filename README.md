@@ -248,10 +248,19 @@ A single gunicorn worker is deliberate: the fitted models live in process
 memory, so a second worker would train its own copy of all eleven. Threads
 handle request concurrency.
 
-**Use the Starter plan, not Free.** Eleven fitted models plus twelve years of
-history do not fit comfortably in 512 MB, and Free instances spin down after 15
-minutes of inactivity — which throws away every fitted model and makes the next
-visitor wait through a cold refresh.
+**Plan sizing.** A full refresh fits eleven models and takes about a minute on
+two cores. **Standard** (1 CPU / 2 GB) keeps it near that and leaves headroom for
+the tree ensembles. Starter (0.5 CPU / 512 MB) will run, but refreshes take
+several minutes and memory is tight. Free additionally spins the instance down
+after 15 minutes idle, discarding every fitted model and making the next visitor
+sit through a cold rebuild.
+
+**The backtest tab is empty until a backtest exists.** The nightly cron job
+fills it, so a fresh deploy shows a "no backtest loaded" notice until 04:20 UTC.
+To fill it immediately, either run `python scripts/run_backtest.py` once from
+the Render Shell, or set `BTC_BACKTEST_ON_START=1` so the web service generates
+one in a background thread on first boot when the disk is empty — that competes
+with request serving for CPU, so only enable it where there is headroom.
 
 ### Configuration
 
@@ -265,6 +274,7 @@ visitor wait through a cold refresh.
 | `BTC_COST_BPS` | `10` | round-trip transaction cost in the backtest |
 | `BTC_OPT_MAX_DTE` | `10` | expiry window for the options page |
 | `BTC_N_JOBS` | `2` | threads for the tree models |
+| `BTC_BACKTEST_ON_START` | `0` | generate a backtest on first boot if none is cached |
 
 ---
 

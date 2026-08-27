@@ -64,6 +64,12 @@ BACKTEST_MIN_TRAIN = int(os.environ.get("BTC_MIN_TRAIN", 730))   # ~2 years of w
 BACKTEST_REFIT_EVERY = int(os.environ.get("BTC_REFIT_EVERY", 30))  # refit cadence in days
 BACKTEST_COST_BPS = float(os.environ.get("BTC_COST_BPS", 10.0))  # round-trip cost, basis points
 
+# Run the walk-forward backtest in a background thread at startup when no
+# cached result exists. Off by default: it is a ~30 minute job on a machine with
+# a couple of spare cores and proportionally longer on a small instance, so it
+# should only be enabled where that CPU is actually available.
+BACKTEST_ON_START = os.environ.get("BTC_BACKTEST_ON_START", "0") == "1"
+
 # --------------------------------------------------------------------------
 # Options
 # --------------------------------------------------------------------------
