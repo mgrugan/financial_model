@@ -75,13 +75,16 @@ body {
 .app { max-width: 1440px; margin: 0 auto; padding: 0 24px 72px; }
 
 /* ---------- header ---------- */
-.masthead {
+.masthead-wrap {
   position: sticky; top: 0; z-index: 40;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   margin: 0 -24px 20px; padding: 14px 24px 0;
+  display: flex; gap: 20px; align-items: flex-start;
 }
+.masthead-wrap > #masthead { flex: 1 1 auto; min-width: 0; }
+.masthead { padding-bottom: 0; }
 .masthead-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 .brand h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
 .brand p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted); max-width: 62ch; }
@@ -233,20 +236,24 @@ body {
 @media (max-width: 780px) {
   .app { padding: 0 14px 48px; }
   .consensus-direction { font-size: 40px; }
-  .masthead { margin: 0 -14px 16px; padding: 12px 14px 0; }
+  .masthead-wrap { margin: 0 -14px 16px; padding: 12px 14px 0; }
   .consensus { grid-template-columns: 1fr; }
   .price-now { font-size: 23px; }
 }
 
-/* controls live in the static shell, beside the dynamic masthead */
-.masthead-wrap { position: relative; }
+/* Controls live in the static shell, in normal flow beside the dynamic
+   masthead. They are deliberately not overlaid on it: an earlier version
+   absolutely positioned them over the sticky header, which then painted on top
+   and made the theme and refresh buttons unclickable. */
 .shell-controls {
-  position: absolute; top: 14px; right: 0;
+  flex: 0 0 auto;
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  justify-content: flex-end; padding-top: 2px;
 }
 .horizon-toggle { display: inline-flex; gap: 4px; font-size: 12.5px; color: var(--text-secondary); }
 .horizon-toggle label { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
 .horizon-toggle input { accent-color: var(--accent); cursor: pointer; }
 @media (max-width: 1080px) {
-  .shell-controls { position: static; margin: 10px 0 4px; }
+  .masthead-wrap { flex-direction: column; gap: 0; }
+  .shell-controls { justify-content: flex-start; margin: 10px 0 4px; }
 }
