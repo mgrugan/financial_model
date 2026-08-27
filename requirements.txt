@@ -1,0 +1,26 @@
+# Pinned to the versions this stack was built and verified against.
+# PyTorch is deliberately absent: the LSTM is implemented directly in NumPy
+# (btcmodels/nn.py, gradient-checked against numerical differences) because a
+# CPU-only Torch install is ~1 GB and does not fit a small Render instance,
+# while the network itself is roughly a thousand parameters.
+
+# --- numerics -------------------------------------------------------------
+numpy==2.4.6
+pandas==3.0.5
+scipy==1.17.1
+
+# --- models ---------------------------------------------------------------
+scikit-learn==1.9.0
+statsmodels==0.15.0
+arch==8.0.0
+xgboost==3.2.0
+
+# --- data -----------------------------------------------------------------
+requests==2.33.1
+
+# --- web ------------------------------------------------------------------
+dash==4.4.1
+plotly==7.0.0
+Flask==3.1.3
+Werkzeug==3.1.8
+gunicorn==26.2.0

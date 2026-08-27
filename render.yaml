@@ -1,0 +1,64 @@
+# Render blueprint.
+#
+# One web service and one scheduled job:
+#
+#   web    serves the dashboard and refreshes forecasts in a background thread
+#   cron   re-runs the walk-forward backtest nightly and writes it to the disk
+#
+# A single gunicorn worker is deliberate. The fitted models live in process
+# memory; a second worker would train its own copy of all eleven and roughly
+# double both memory and startup CPU for no benefit. Threads handle concurrency.
+
+services:
+  - type: web
+    name: btc-model-dashboard
+    runtime: python
+    plan: starter            # the free plan's 512 MB is too tight to fit 11 models
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:server --workers 1 --threads 4 --timeout 180
+    healthCheckPath: /
+    autoDeploy: true
+    disk:
+      name: btc-cache
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.15"
+      - key: BTC_CACHE_DIR
+        value: /var/data
+      - key: BTC_REFRESH_SECONDS
+        value: "900"          # rebuild forecasts every 15 minutes
+      - key: BTC_N_PATHS
+        value: "30000"        # Monte Carlo paths per model per horizon
+      - key: BTC_N_JOBS
+        value: "2"
+      - key: BTC_LOG_LEVEL
+        value: INFO
+      - key: WEB_CONCURRENCY
+        value: "1"
+
+  - type: cron
+    name: btc-backtest-nightly
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "20 4 * * *"    # 04:20 UTC daily
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run_backtest.py --quiet
+    disk:
+      name: btc-cache
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.15"
+      - key: BTC_CACHE_DIR
+        value: /var/data
+      - key: BTC_BACKTEST_DAYS
+        value: "1095"
+      - key: BTC_REFIT_EVERY
+        value: "45"
+      - key: BTC_N_JOBS
+        value: "2"
