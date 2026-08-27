@@ -225,11 +225,57 @@ body {
 .model-doc p { margin: 0; font-size: 12.5px; color: var(--text-secondary); max-width: 92ch; }
 
 .dash-spreadsheet-container .dash-spreadsheet-inner table { --hover: var(--surface-sunken) !important; }
-.Select-control, .Select-menu-outer, .Select-value-label { background: var(--surface-raised) !important; color: var(--text-primary) !important; border-color: var(--border) !important; }
-.Select-menu-outer { border-color: var(--border) !important; }
-.VirtualizedSelectOption { background: var(--surface-raised) !important; color: var(--text-secondary) !important; }
-.VirtualizedSelectFocusedOption { background: var(--surface-sunken) !important; }
-.Select-arrow { border-color: var(--text-muted) transparent transparent !important; }
+
+/* Dash 4 renders dropdowns with `dash-dropdown-*` class names, not the
+   `Select-*` ones of earlier versions -- styling those was dead CSS and left the
+   control with default light-mode chrome on a dark surface. Prefix selectors
+   cover the menu subclasses too, which only exist while the menu is open. */
+.dash-dropdown,
+[class^="dash-dropdown"],
+[class*=" dash-dropdown"] {
+  background-color: transparent;
+  color: var(--text-primary);
+  border-color: var(--border);
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+.dash-dropdown-trigger {
+  background: var(--surface-raised) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  min-height: 34px;
+}
+.dash-dropdown-trigger:hover { border-color: var(--border-strong) !important; }
+.dash-dropdown-value,
+.dash-dropdown-value-item { color: var(--text-primary) !important; }
+[class*="dash-dropdown-menu"],
+[class*="dash-dropdown-list"],
+[class*="dash-dropdown-options"] {
+  background: var(--surface-raised) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow) !important;
+}
+[class*="dash-dropdown-option"] { color: var(--text-secondary) !important; }
+[class*="dash-dropdown-option"]:hover,
+[class*="dash-dropdown-option"][aria-selected="true"] {
+  background: var(--surface-sunken) !important;
+  color: var(--text-primary) !important;
+}
+.dash-dropdown input, .dash-dropdown select {
+  background: transparent !important; color: var(--text-primary) !important;
+}
+
+/* Dash ships a near-black colour on RadioItems/Checklist labels
+   (rgba(0,9,38,.9)), which is invisible on the dark surface -- measured, not
+   guessed. Inheriting from the wrapper is not enough; the label rule has to win. */
+.horizon-toggle,
+.horizon-toggle label,
+.horizon-toggle span,
+.horizon-toggle div { color: var(--text-secondary) !important; }
+.horizon-toggle label:hover { color: var(--text-primary) !important; }
 
 ._dash-loading { color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
 
