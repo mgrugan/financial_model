@@ -228,7 +228,7 @@ class LSTMModel(SupervisedModel):
     # thousand noisy windows would fit the noise long before the signal.
     SEQ_FEATURES = [
         "ret_1d", "mom_5d", "mom_21d", "px_vs_sma_10", "px_vs_sma_50",
-        "vol_5d", "vol_21d", "vol_ratio_5_21", "rsi_14", "macd_hist",
+        "vol_5d", "vol_21d", "vol_ratio_5_21", "rsi_14", "macd",
         "bb_pos_20", "vol_z_21", "drawdown", "close_loc",
     ]
     seq_len = 24
