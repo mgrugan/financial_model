@@ -1,0 +1,39 @@
+{
+ "generated_at": "2026-09-01T20:26:42Z",
+ "benchmarks": [
+  {
+   "ticker": "IJR",
+   "label": "S&P SmallCap 600 (cap-weighted)",
+   "n_periods": 28,
+   "universe_annual": 0.18512754524818154,
+   "benchmark_annual": 0.14368404149527847,
+   "gap_annual": 0.03623684710920583,
+   "win_rate": 0.8928571428571429,
+   "t_stat": 5.241991721554911
+  },
+  {
+   "ticker": "IWM",
+   "label": "Russell 2000",
+   "n_periods": 28,
+   "universe_annual": 0.18512754524818154,
+   "benchmark_annual": 0.13688391872576533,
+   "gap_annual": 0.042434962556677114,
+   "win_rate": 0.8214285714285714,
+   "t_stat": 4.226000000080254
+  }
+ ],
+ "size_factor": {
+  "n_periods": 28,
+  "mean_spread": 0.17805191407894272,
+  "t_stat": 9.232164554685943,
+  "p_value": 7.658697437055536e-10,
+  "hit_rate": 1.0,
+  "quintiles": [
+   0.013438141056085873,
+   0.050248147979241216,
+   0.08717642957449323,
+   0.10082724726357774,
+   0.19149005513502856
+  ]
+ }
+}

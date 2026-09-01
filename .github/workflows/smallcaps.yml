@@ -5,7 +5,7 @@
 # half an hour on a 4-vCPU runner, and its conclusions move on a scale of months
 # rather than hours. The dashboard build only *reads* the committed JSON.
 
-name: Refresh small-cap study
+name: Refresh small-cap studies
 
 on:
   schedule:
@@ -55,6 +55,25 @@ jobs:
       - name: Stage 2 — full model stack on any survivor
         run: python scripts/stage2_smallcaps.py
 
+      # --- long-horizon value study -------------------------------------
+      - name: Pull SEC EDGAR fundamentals
+        run: python scripts/download_fundamentals.py
+
+      - name: Build the point-in-time value panel
+        run: python scripts/build_value_panel.py
+
+      - name: Test the value factors
+        run: python scripts/run_value_factors.py
+
+      - name: Run the cross-sectional models
+        run: python scripts/run_value_models.py
+
+      - name: Measure the survivorship bias
+        run: python scripts/measure_survivorship.py
+
+      - name: Build today's value screen
+        run: python scripts/build_value_screen.py
+
       - name: Sanity-check the artefacts before committing
         run: |
           python - <<'PY'
@@ -83,6 +102,26 @@ jobs:
           print(f"OK: {len({r['ticker'] for r in rows})} tickers, "
                 f"{len(rows)} tests, {n_edge} with an edge, "
                 f"{plac_edges} placebo false positives")
+
+          # Value study: the size factor is the canary. In a current-constituents
+          # universe it must show a huge, near-perfect spread; if it ever stops
+          # doing so the panel is misaligned in time and every other number on
+          # the page is suspect.
+          surv = json.loads(pathlib.Path("data/value_survivorship.json").read_text())
+          size = surv["size_factor"]
+          assert size["hit_rate"] > 0.8, (
+              f"size factor hit rate {size['hit_rate']:.0%} — the value panel is "
+              "probably misaligned in time")
+
+          factors = json.loads(pathlib.Path("data/value_factors.json").read_text())
+          ok = [r for r in factors["results"] if r.get("status") == "ok"]
+          assert len(ok) >= 20, f"only {len(ok)} factor tests ran"
+          assert factors["n_rebalances"] >= 20, "too few rebalances"
+
+          screen = json.loads(pathlib.Path("data/value_screen.json").read_text())
+          assert screen["n"] >= 400, f"value screen only covers {screen['n']} companies"
+          print(f"OK: value panel {factors['n_stock_periods']} stock-periods, "
+                f"{len(ok)} factor tests, screen {screen['n']} companies")
           PY
 
       - name: Commit if it changed
@@ -91,10 +130,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/smallcap_screen.json data/smallcap_stage2.json \
                   data/smallcap_null.json data/smallcap_inventory.json \
-                  data/smallcap_universe.json
+                  data/smallcap_universe.json data/value_factors.json \
+                  data/value_models.json data/value_screen.json \
+                  data/value_survivorship.json
           if git diff --cached --quiet; then
             echo "no change"
           else
-            git commit -m "Refresh small-cap edge study [skip ci]"
+            git commit -m "Refresh small-cap edge and value studies [skip ci]"
             git push
           fi

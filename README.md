@@ -342,6 +342,108 @@ promote one.
 * **Capacity.** Several names trade a few million dollars a day. A real signal can
   still be untradeable at any size that matters.
 
+## The small-cap value study
+
+The same universe, asked a different question: forget predicting next week, does
+**cheap** beat **expensive** over the following six months? Graham's defensive
+criteria and Burry's enterprise-value multiples, tested on 528 companies across
+28 semi-annual rebalances from 2012 to 2026. Published at `value.html`.
+
+### The finding
+
+Ranked the way a normal screen ranks, value looks like it works:
+
+| Factor | Pooled t | Sector-neutral t | **Sector + size neutral t** |
+|---|---|---|---|
+| Earnings / price | +2.72 | +2.88 | **+1.23** |
+| Graham number / price | +2.61 | +2.36 | **−0.17** |
+| Book / price | +1.54 | +2.31 | **−1.56** |
+| Revenue / EV | +1.68 | +2.89 | **−1.69** |
+| EBITDA / EV *(Burry's metric)* | +1.22 | +0.91 | **−0.93** |
+| Free cash flow / EV | +0.33 | +0.14 | **−1.02** |
+
+Across all 36 tests, 8 clear a raw 5% threshold and **0 survive
+Benjamini–Hochberg** at a 10% false-discovery rate. The placebo arm of 40 random
+signals returns 2 raw hits and 0 survivors.
+
+### Why the third column is the only one that counts
+
+In this universe, **market capitalisation returns +17.8% per half-year with a
+t-statistic of +9.2 and is positive in 28 of 28 periods.** No real premium goes
+28-for-28. It is the selection rule of a current-constituents list made visible:
+to be in the S&P 600 *today*, a company that was small in 2012 must have grown
+enough to still qualify, so "was small" mechanically predicts "went up".
+
+Two independent readings agree. The universe beat the actual small-cap indices by
+3.6 points a year (vs IJR) and 4.2 points (vs IWM), winning 82–89% of half-years.
+
+Every price-scaled value ratio — earnings/price, book/price, EV/EBITDA — carries
+market cap in its denominator, so each one inherits part of that artifact.
+Residualising the score on the within-period size rank removes it, and when it
+goes, the value effect goes with it.
+
+### The machine-learning models make the same point twice
+
+| Model | As trained | Size-neutralised |
+|---|---|---|
+| Ridge | +7.03% spread, t = +3.59 | +0.89%, t = +0.58 |
+| Random forest | +8.40%, t = +4.34 | +3.04%, t = +1.91 |
+| Gradient boosting | +4.26%, t = +2.62 | +0.57%, t = +0.34 |
+| Neural net (MLP) | +4.73%, t = +2.62 | −1.80%, t = −1.06 |
+
+Market cap was already removed from the feature list. The models rebuilt the size
+bet out of the price-scaled ratios anyway — mean information coefficients turn
+slightly *negative* once the prediction itself is neutralised. Nothing was
+learned about value that was not really about size.
+
+### Point-in-time fundamentals, from filings
+
+Fundamentals come from SEC EDGAR's XBRL `companyfacts` API rather than a vendor,
+because every fact carries the date of the filing that first disclosed it. A
+rebalance on date T uses only facts filed by T, and where a period was reported
+more than once the **earliest** filing wins. Both halves matter: a fiscal year
+ending 31 October is not public on 31 October, and the companies that file latest
+are disproportionately the distressed ones a deep-value screen is most interested
+in. Vendors also overwrite history with restatements, which makes a company that
+later restated earnings downward look as though the market should have known.
+
+Four data problems, each of which would have manufactured a result:
+
+* **Market cap needs unadjusted prices.** An adjusted close is scaled backwards
+  through every later split and dividend; pairing it with a point-in-time share
+  count understated ABM's 2011 market cap by 27%.
+* **Share counts are sometimes tagged in thousands.** One filer reports 25,829
+  diluted shares against $902m of equity — a $34,900 book value per share and a
+  price-to-book of 0.00, which sorts *straight to the top* of a value screen
+  because every ratio is understated by the same three orders of magnitude.
+* **Some filings are forward-looking.** Companies emerging from Chapter 11 file
+  projected financials and mortgage REITs tag debt maturities as period ends —
+  one carries "periods" ending in 2030. Any fact whose period ends after the
+  filing reporting it is discarded.
+* **Loss-makers are not "expensive".** A negative earnings yield sorts to the
+  bottom of the book, silently relabelling loss-making companies as expensive.
+  They are opposite kinds of company: that bottom quintile was 83% loss-making
+  and returned +14.4%, above the profitable middle. Graham's first defensive test
+  is positive earnings, so gating on it is the tradition's own rule.
+
+Sample size is **28**, not 13,230: within one half-year every name shares that
+half-year's market move, so all inference runs on the period-level spread series.
+
+### What this does and does not say
+
+It does **not** disprove value investing. The minimum detectable effect here is
+5–10% a year depending on the factor, and the historical value premium is roughly
+4–5% — this design could not resolve it either way. Size-neutralising is also a
+conservative correction that may over-correct, since value and size are genuinely
+correlated in the real world.
+
+The honest position is that **a current-constituents universe cannot answer this
+question at all**, because value ratios are price-scaled and price is exactly
+what the selection operated on. The screen at `value.html` is published as a
+description of what is statistically cheap today — a starting point for reading
+annual reports, which is what both Graham and Burry actually did — and explicitly
+not as a signal.
+
 ## Options analytics
 
 Priced with **Black-76 on each expiry's own forward** rather than Black-Scholes

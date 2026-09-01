@@ -52,6 +52,9 @@ jobs:
       - name: Build small-cap edge study
         run: python -m static.build_smallcaps --out site
 
+      - name: Build small-cap value study
+        run: python -m static.build_value --out site
+
       - name: Check the build produced something usable
         run: |
           test -f site/index.html || { echo "no index.html"; exit 1; }
@@ -63,7 +66,10 @@ jobs:
           sc=$(stat -c%s site/smallcaps.html)
           test "$sc" -gt 50000 || { echo "smallcaps.html suspiciously small: $sc"; exit 1; }
           grep -q "NO EDGE\|EDGE" site/smallcaps.html || { echo "smallcaps table empty"; exit 1; }
-          echo "index.html ${bytes} bytes, ${panels} panels, smallcaps.html ${sc} bytes"
+          test -f site/value.html || { echo "no value.html"; exit 1; }
+          v=$(stat -c%s site/value.html)
+          test "$v" -gt 30000 || { echo "value.html suspiciously small: $v"; exit 1; }
+          echo "index.html ${bytes} bytes, ${panels} panels, smallcaps.html ${sc} bytes, value.html ${v} bytes"
 
       - uses: actions/upload-pages-artifact@v3
         with:
