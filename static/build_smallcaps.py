@@ -194,9 +194,9 @@ def render_table(rows: list[dict]) -> str:
 
     body: list[str] = []
     for r in rows:
-        chip = ('<span class="chip chip--edge"><span class="glyph" aria-hidden="true">●</span>EDGE</span>'
+        chip = ('<span class="chip chip--edge"><span class="glyph" aria-hidden="true">✓</span>EDGE</span>'
                 if r["edge"] else
-                '<span class="chip chip--none"><span class="glyph" aria-hidden="true">▲</span>NO EDGE</span>')
+                '<span class="chip chip--none"><span class="glyph" aria-hidden="true">✕</span>NO EDGE</span>')
         body.append(
             f'<tr data-edge="{1 if r["edge"] else 0}" '
             f'data-search="{esc((r["ticker"] + " " + r["name"] + " " + r["sector"]).lower())}">'
@@ -223,6 +223,8 @@ def build_page(out: Path) -> Path:
     inventory = json.loads((DATA / "smallcap_inventory.json").read_text())
     stage2_path = DATA / "smallcap_stage2.json"
     stage2 = json.loads(stage2_path.read_text()) if stage2_path.exists() else None
+    null_path = DATA / "smallcap_null.json"
+    null = json.loads(null_path.read_text()) if null_path.exists() else None
 
     rows = build_ticker_rows(screen, inventory)
     real_ok = [r for r in screen["rows"] if r.get("status") == "ok"]
@@ -303,6 +305,9 @@ def build_page(out: Path) -> Path:
         f'<span style="color:var(--text-secondary)">{len(plac_ok)//2} random walks (placebo)</span></span>'
         "</div>")
 
+    # ---- the aggregate trap ----------------------------------------------
+    aggregate_html = render_aggregate(null, n_tests)
+
     # ---- stage 2 ----------------------------------------------------------
     stage2_html = render_stage2(stage2, n_edge)
 
@@ -319,6 +324,7 @@ def build_page(out: Path) -> Path:
         p_chart=p_chart,
         legend=legend,
         table=render_table(rows),
+        aggregate=aggregate_html,
         n_tickers=n_tickers,
         n_edge=n_edge,
         n_none=n_tickers - n_edge,
@@ -334,6 +340,50 @@ def build_page(out: Path) -> Path:
     target = out / "smallcaps.html"
     target.write_text(html_doc)
     return target
+
+
+def render_aggregate(null: dict | None, n_tests: int) -> str:
+    """The one number on this page that a careless reading would call an edge."""
+    if not null:
+        return ""
+    real_mean = null["real_mean_auc"]
+    naive_z, dep_z = null["naive_z"], null["dependence_aware_z"]
+    real_sd, null_sd = null["real_cross_sectional_sd"], null["null_mean_cross_sectional_sd"]
+    cohort_sd = null["null_sd_of_cohort_mean"]
+    naive_se = null["naive_se"]
+
+    return f"""
+  <div class="sc-section">
+    <h2>The one number that could fool you</h2>
+    <p class="lede">Averaged over all {n_tests:,} tests, the small caps scored a mean AUC of
+    <strong>{real_mean:.4f}</strong> — a hair above a coin flip. Divide that excess by the
+    textbook standard error and it is a four-sigma result, which would be a genuine
+    market-wide finding. That calculation is wrong, and it is wrong in the direction that
+    costs money.</p>
+    <div class="sc-charts">
+      <div class="sc-card">
+        <h3>Assuming the tests are independent</h3>
+        <p class="sub">standard error = sd / √n = {naive_se:.5f}</p>
+        <div class="sc-bigz sc-bigz--void">z = {naive_z:+.2f}<span class="sc-bigz-tag">invalid here</span></div>
+        <p class="sc-note" style="margin-top:6px">Reads as overwhelming evidence. But the 532
+        names correlate <strong>0.28</strong> pairwise — they share a market factor and rise and
+        fall together — so this is nowhere near 1,064 independent observations.</p>
+      </div>
+      <div class="sc-card">
+        <h3>Against a measured, correlated null</h3>
+        <p class="sub">{null['n_cohorts']} cohorts × {null['names_per_cohort']} random walks
+        sharing a factor at ρ&nbsp;=&nbsp;{null['rho']}; sd of cohort mean = {cohort_sd:.4f}</p>
+        <div class="sc-bigz">z = {dep_z:+.2f}<span class="sc-bigz-tag">the honest number</span></div>
+        <p class="sc-note" style="margin-top:6px">Once the dependence is in the null, the same
+        number is unremarkable. Correlated noise wanders this far from 0.5 routinely.</p>
+      </div>
+    </div>
+    <p class="sc-note">The cross-sectional spread tells the same story from the other side. If
+    some names were genuinely predictable and others were not, the real AUCs would be
+    <em>more</em> spread out than noise. They are not: real sd <strong>{real_sd:.4f}</strong>
+    against a correlated-null sd of <strong>{null_sd:.4f}</strong>. There is no market-wide
+    edge and no name-specific one hiding underneath the average.</p>
+  </div>"""
 
 
 def render_stage2(stage2: dict | None, n_edge: int) -> str:
@@ -618,6 +668,8 @@ PAGE = """<!DOCTYPE html>
     20&nbsp;bps round-trip, on non-overlapping weekly blocks; compare it against buy &amp; hold
     in the next column, not against zero.</p>
   </div>
+
+  {aggregate}
 
   {stage2}
 

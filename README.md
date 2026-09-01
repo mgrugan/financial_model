@@ -252,6 +252,96 @@ of daily data. So the negative result does not say "these models failed" — it
 says this experiment cannot resolve the question either way, and neither can any
 three-year daily backtest. Reporting the interval is the finding.
 
+## The small-cap edge study
+
+The same stack pointed at **532 S&P SmallCap 600 companies**, on the theory that
+if an edge exists anywhere it should be in the neglected tail rather than in the
+most-arbitraged asset on earth. Each name gets its own walk-forward backtest over
+roughly six years out of sample, at a 1-day and a 1-week horizon: **1,064 tests**.
+Published at `smallcaps.html`.
+
+### The result
+
+| | Real small caps | Placebo (random walks) |
+|---|---|---|
+| Tests | 1,064 | 500 |
+| Mean AUC | 0.5029 | 0.4986 |
+| Cross-sectional sd | 0.0231 | 0.0226 |
+| Raw hits at p&lt;0.05 | 49 (chance gives ~53) | 17 (chance gives ~25) |
+| **Survive BH at 10% FDR** | **0** | **0** |
+
+Not one name clears the bar. The strongest raw signal in the universe is PRK at
+one day, AUC 0.5533, p = 3.1e-4 — which sounds decisive until you remember 1,064
+tests were run: its BH q-value is 0.327, and its backtested strategy returned
++6.5% a year against +17.8% for simply holding the stock.
+
+### Multiple testing is the entire problem
+
+500 names × 2 horizons at a 5% threshold manufactures ~53 "discoveries" from pure
+noise. The real universe produced 49 — *fewer* than chance. Every p-value goes
+through Benjamini–Hochberg across the whole family, and only the q-value is
+allowed to turn a row green.
+
+### The number that could fool you
+
+The mean AUC across all tests came out at 0.5029. Divided by the textbook
+standard error (sd/√n = 0.00071) that is **z = +4.10** — a four-sigma market-wide
+finding.
+
+It is not one. The 532 names correlate **0.28** pairwise: they share a market
+factor, so the tests are nowhere near independent and the variance of their mean
+does not shrink like 1/N — it converges to ρσ². Rather than derive the correction,
+`scripts/correlated_null.py` measures it: 14 cohorts of 22 random walks sharing a
+factor at the observed ρ, pushed through byte-identical code. Against that null,
+**z = +0.67**. Correlated noise wanders that far from 0.5 routinely.
+
+The cross-sectional spread confirms it from the other side. Genuine per-name
+predictability would make the real AUCs *more* dispersed than noise. Real sd is
+0.0231 against a correlated-null 0.0226 — there is no market-wide edge, and none
+hiding underneath the average either.
+
+### Two data problems that do not arise for Bitcoin
+
+Both would have manufactured a fake edge if left alone:
+
+* **Splits and dividends.** A raw close steps −50% on a split date. That is a
+  units change, not a return, and it would be the largest "move" in many of these
+  histories. We take Yahoo's `adjclose` and rescale open/high/low by the same
+  per-bar ratio so range features stay consistent with it.
+* **Pre-listing stale quotes and bad ticks.** Several names carry years of
+  zero-volume history at a frozen price (non-traded REITs, pre-IPO stubs), and two
+  carry outright decimal typos — a 4.50 → 0.45 → 5.00 sequence on no volume. A bad
+  tick that fully reverses next bar is *genuinely predictable*, so leaving it in
+  would create exactly the false positive the study exists to rule out. Histories
+  are trimmed to where sustained liquidity begins; residual spike-reversals are
+  flagged, not silently repaired.
+
+### Why two stages
+
+Stage 1 runs **one pre-specified logistic regression** for every ticker — no
+per-name tuning, no best-of-eleven. That restraint is load-bearing: the maximum
+over model choices has a far wider null distribution than any single choice, so
+"the best model on the best ticker" clears 0.5 easily with nothing underneath.
+Only names that clear stage 1 go to the full eleven-model stack. Nothing cleared,
+so stage 2 cost nothing — which is the point of screening before spending 500 × 11
+walk-forwards.
+
+Stage 2 is also explicitly labelled a *robustness check, not confirmation*: it
+reuses the window stage 1 already saw, so it can demote a finding but never
+promote one.
+
+### What is still wrong even so
+
+* **Survivorship.** These are today's index members; names dropped after
+  collapsing are absent. That flatters every return column. AUC is largely immune
+  — it measures ranking within a series, not drift — but the CAGR columns are
+  indicative, not achievable.
+* **Point-in-time membership.** Constituents as of today, applied backwards.
+* **Costs.** 20 bps round-trip is charged. Real small-cap spreads are often wider,
+  and widest in exactly the names where a model looks most confident.
+* **Capacity.** Several names trade a few million dollars a day. A real signal can
+  still be untradeable at any size that matters.
+
 ## Options analytics
 
 Priced with **Black-76 on each expiry's own forward** rather than Black-Scholes

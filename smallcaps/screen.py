@@ -270,3 +270,48 @@ def synthetic_frame(seed: int, n_bars: int = 3000, ann_vol: float = 0.35,
     }, index=pd.date_range("2014-01-02", periods=n_bars, freq="B", tz="UTC"))
     frame["is_partial"] = False
     return frame
+
+
+def correlated_universe(seed: int, n_names: int, rho: float = 0.278,
+                        n_bars: int = 1512 + 800, ann_vol: float = 0.40,
+                        drift: float = 0.08) -> list[pd.DataFrame]:
+    """A cohort of random walks sharing one market factor.
+
+    The plain placebo arm answers "what does the screen do on *independent*
+    noise?". It cannot answer the question that matters for any statistic
+    aggregated across the universe -- such as the mean AUC -- because the 532
+    real small caps are not independent: their daily returns correlate about
+    0.28 on average, so they move together and their AUC estimates move together
+    too. Under that dependence the variance of a cross-sectional mean does not
+    shrink like ``1/N``; it converges to ``rho * sigma^2``, which for this
+    universe is roughly seventeen times larger than the independent formula
+    says. Treating 1,064 correlated tests as 1,064 independent ones is exactly
+    how a 0.503 mean AUC gets mistaken for a market-wide edge.
+
+    Each cohort here is one draw from that null: a common factor plus
+    idiosyncratic noise, calibrated to the measured correlation and volatility.
+    """
+    rng = np.random.default_rng(10_000 + seed)
+    sigma = ann_vol / np.sqrt(TRADING_DAYS_PER_YEAR)
+    mu = drift / TRADING_DAYS_PER_YEAR - 0.5 * sigma**2
+
+    factor = rng.normal(0.0, 1.0, n_bars)
+    idio = rng.normal(0.0, 1.0, (n_names, n_bars))
+    shocks = np.sqrt(rho) * factor[None, :] + np.sqrt(1.0 - rho) * idio
+
+    index = pd.date_range("2012-01-02", periods=n_bars, freq="B", tz="UTC")
+    frames = []
+    for i in range(n_names):
+        rets = mu + sigma * shocks[i]
+        close = 40.0 * np.exp(np.cumsum(rets))
+        intraday = np.abs(rng.normal(0.0, sigma * 0.7, (n_bars, 2)))
+        frame = pd.DataFrame({
+            "open": close * np.exp(rng.normal(0.0, sigma * 0.3, n_bars)),
+            "high": close * np.exp(intraday[:, 0]),
+            "low": close * np.exp(-intraday[:, 1]),
+            "close": close,
+            "volume": rng.lognormal(13.0, 0.6, n_bars),
+        }, index=index)
+        frame["is_partial"] = False
+        frames.append(frame)
+    return frames

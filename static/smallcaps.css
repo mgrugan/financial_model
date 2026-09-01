@@ -109,3 +109,15 @@ table.sc-table { width: 100%; border-collapse: collapse; font-size: 13px;
   border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 9px;
   font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,.18); white-space: nowrap; }
 .sc-tip[data-show="1"] { opacity: 1; }
+
+/* These two numbers are methods, not statuses. The reserved red/green already
+   mean "no edge"/"edge" in the table below, so reusing them here would say the
+   opposite of what is meant. Ink and a tag carry the distinction instead. */
+.sc-bigz { font-size: 34px; font-weight: 650; letter-spacing: -0.03em; margin-top: 10px;
+           font-variant-numeric: tabular-nums; color: var(--text-primary);
+           display: flex; align-items: baseline; gap: 10px; }
+.sc-bigz--void { color: var(--text-muted); text-decoration: line-through;
+                 text-decoration-thickness: 2px; }
+.sc-bigz-tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+               text-transform: uppercase; text-decoration: none;
+               color: var(--text-muted); }

@@ -1,0 +1,6 @@
+{
+ "generated_at": "2026-09-01T18:26:29Z",
+ "survivors": [],
+ "note": "No ticker cleared the stage-1 screen, so the full stack was not run. This is the compute-saving design working as intended: eleven models over 500 names would have been roughly 500x the cost of the screen that showed there was nothing to promote.",
+ "rows": []
+}

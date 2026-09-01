@@ -11,7 +11,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
+
+# Pin every BLAS backend to one thread BEFORE numpy/sklearn are imported. Each
+# of the four worker processes would otherwise spin up its own thread pool sized
+# to the whole machine, so the four of them oversubscribe 4 cores by ~4x and the
+# screen runs an order of magnitude slower than single-threaded. Small matrices;
+# the parallelism that pays here is across tickers, not inside one fit.
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+             "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path

@@ -1,0 +1,100 @@
+# Refresh the small-cap edge study and commit its artefacts.
+#
+# Kept separate from the hourly dashboard build for the same reason the Bitcoin
+# backtest is: this is ~500 walk-forward backtests plus a placebo arm, roughly
+# half an hour on a 4-vCPU runner, and its conclusions move on a scale of months
+# rather than hours. The dashboard build only *reads* the committed JSON.
+
+name: Refresh small-cap study
+
+on:
+  schedule:
+    - cron: "25 6 * * 0"        # Sundays, after the Bitcoin backtest job
+  workflow_dispatch:
+    inputs:
+      refresh_universe:
+        description: "Re-scrape the S&P 600 constituent list"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: smallcaps
+  cancel-in-progress: false
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh constituent list
+        if: inputs.refresh_universe
+        run: python -m smallcaps.universe
+
+      - name: Download prices and build the inventory
+        run: python scripts/download_smallcaps.py
+
+      - name: Stage 1 — screen every ticker
+        run: python scripts/screen_smallcaps.py
+
+      - name: Measure the dependence-aware null for the aggregate statistics
+        run: python scripts/correlated_null.py
+
+      - name: Stage 2 — full model stack on any survivor
+        run: python scripts/stage2_smallcaps.py
+
+      - name: Sanity-check the artefacts before committing
+        run: |
+          python - <<'PY'
+          import json, pathlib
+
+          screen = json.loads(pathlib.Path("data/smallcap_screen.json").read_text())
+          rows = [r for r in screen["rows"] if r.get("status") == "ok"]
+          plac = [r for r in screen["placebo_rows"] if r.get("status") == "ok"]
+
+          assert len({r["ticker"] for r in rows}) >= 400, "universe collapsed"
+          assert len(plac) >= 200, "placebo arm did not run"
+
+          for r in rows:
+              assert 0.2 < r["auc"] < 0.8, f"{r['ticker']}: implausible AUC {r['auc']}"
+              assert r["n_eff"] >= 100, f"{r['ticker']}: only {r['n_eff']:.0f} effective obs"
+
+          # The placebo arm is the screen's own control. If random walks start
+          # producing discoveries, the pipeline has a leak and the real results
+          # cannot be trusted either -- fail loudly rather than publish them.
+          plac_edges = sum(1 for r in plac if r.get("edge"))
+          assert plac_edges <= 1, (
+              f"{plac_edges} random walks were called discoveries — "
+              "the screen is leaking; refusing to publish")
+
+          n_edge = len({r["ticker"] for r in rows if r.get("edge")})
+          print(f"OK: {len({r['ticker'] for r in rows})} tickers, "
+                f"{len(rows)} tests, {n_edge} with an edge, "
+                f"{plac_edges} placebo false positives")
+          PY
+
+      - name: Commit if it changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/smallcap_screen.json data/smallcap_stage2.json \
+                  data/smallcap_null.json data/smallcap_inventory.json \
+                  data/smallcap_universe.json
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "Refresh small-cap edge study [skip ci]"
+            git push
+          fi
