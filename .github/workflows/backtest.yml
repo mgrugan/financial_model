@@ -1,0 +1,70 @@
+# Regenerate the walk-forward backtest and commit it.
+#
+# This is the expensive job (~40 minutes) and it is kept separate from the
+# dashboard build for two reasons: it would blow the hourly build's budget, and
+# its output barely moves week to week -- it is a three-year walk-forward, so a
+# few extra days at the end shift the metrics in the third decimal.
+#
+# The result is committed as data/backtest.json rather than left on a disk,
+# because a static site has no disk to read from.
+
+name: Refresh backtest
+
+on:
+  schedule:
+    - cron: "40 5 * * 0"        # Sundays, 05:40 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backtest
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run walk-forward backtest
+        run: python scripts/run_backtest.py --days 1095 --refit-every 45 --quiet
+
+      - name: Sanity-check the artefact before committing
+        run: |
+          python - <<'PY'
+          import json, sys, pathlib
+          p = pathlib.Path("data/backtest.json")
+          raw = json.loads(p.read_text())
+          results = raw["results"]
+          assert len(results) >= 9, f"only {len(results)} models scored"
+          for key, per in results.items():
+              for hk, r in per.items():
+                  n = r["metrics"]["n"]
+                  assert n > 500, f"{key}/{hk}: only {n} test days"
+                  auc = r["metrics"]["auc"]
+                  assert auc is None or 0.2 < auc < 0.8, f"{key}/{hk}: implausible AUC {auc}"
+          print(f"OK: {len(results)} models, {p.stat().st_size/1e6:.1f} MB")
+          PY
+
+      - name: Commit if it changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/backtest.json
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "Refresh walk-forward backtest [skip ci]"
+            git push
+          fi

@@ -1,0 +1,42 @@
+/* Additions for the static build: controls the served app gets from Dash. */
+
+.picker {
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 12.5px; font-family: var(--sans);
+  min-width: 200px; cursor: pointer;
+}
+.picker:hover { border-color: var(--border-strong); }
+.picker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.picker[hidden] { display: none !important; }
+
+.tab-bar .tab { cursor: pointer; font: inherit; }
+.tab-bar .tab:hover { color: var(--text-secondary); }
+
+.radio-group { display: inline-flex; gap: 4px; font-size: 12.5px; color: var(--text-secondary); }
+.radio-group label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; padding-right: 8px; }
+.radio-group input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+
+.table-wrap { overflow-x: auto; }
+.dtable { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+.dtable th {
+  background: var(--surface-sunken); color: var(--text-muted);
+  font-family: var(--sans); font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap;
+}
+.dtable td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); text-align: right; white-space: nowrap; }
+.dtable th.txt, .dtable td.txt { text-align: left; font-family: var(--sans); }
+.dtable tbody tr:hover td { background: var(--surface-sunken); }
+
+.plot { width: 100%; }
+.loading-note { color: var(--text-muted); font-family: var(--mono); font-size: 12.5px; }
+
+.site-footer {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text-muted); font-family: var(--mono);
+}
+
+/* The static build has no Dash spinner, so fade panels in on swap. */
+#content { animation: fade .16s ease; }
+@keyframes fade { from { opacity: .4; } to { opacity: 1; } }

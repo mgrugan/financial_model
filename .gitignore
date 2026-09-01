@@ -5,10 +5,16 @@ __pycache__/
 venv/
 .env
 
-# Cached market data and backtest artefacts are regenerated on demand.
+# Cached market data is regenerated on demand.
 .cache/
 *.pkl
 *.parquet
+site/
+
+# data/backtest.json is deliberately committed: it is the track record the
+# dashboard shows, it takes 40 minutes to regenerate, and a static build has
+# nowhere to compute one.
+!data/backtest.json
 
 .DS_Store
 .idea/

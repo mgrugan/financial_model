@@ -9,10 +9,12 @@ a full refresh trains eleven models.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import pickle
 import threading
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -42,6 +44,10 @@ from .registry import ForecastBundle, MODEL_ORDER, build_all, run_all
 log = logging.getLogger(__name__)
 
 BACKTEST_CACHE = CACHE_DIR / "backtest.pkl"
+# Committed to the repository so a deployment with no writable disk -- a static
+# build, or a free host -- still shows a track record without spending 40
+# minutes recomputing one.
+BACKTEST_JSON = Path(__file__).resolve().parent.parent / "data" / "backtest.json"
 
 
 # ---------------------------------------------------------------------------
@@ -174,18 +180,39 @@ def build_option_view(bundle: ForecastBundle, horizon_key: str = "1w") -> dict[s
 
 
 def load_backtest() -> dict[str, Any]:
-    """Read the cached walk-forward results, if a run has completed."""
-    if not BACKTEST_CACHE.exists():
-        return {"available": False, "reason": "No backtest has been run yet."}
-    try:
-        with open(BACKTEST_CACHE, "rb") as fh:
-            payload = pickle.load(fh)
-        payload["available"] = True
-        payload["age_hours"] = (time.time() - payload.get("generated_at", 0)) / 3600.0
-        return payload
-    except Exception as exc:
-        log.error("backtest cache unreadable: %s", exc)
-        return {"available": False, "reason": f"Cache unreadable: {exc}"}
+    """Read walk-forward results: local cache first, then the committed artefact."""
+    if BACKTEST_CACHE.exists():
+        try:
+            with open(BACKTEST_CACHE, "rb") as fh:
+                payload = pickle.load(fh)
+            payload["available"] = True
+            payload["age_hours"] = (time.time() - payload.get("generated_at", 0)) / 3600.0
+            return payload
+        except Exception as exc:
+            log.error("backtest cache unreadable: %s", exc)
+
+    if BACKTEST_JSON.exists():
+        try:
+            raw = json.loads(BACKTEST_JSON.read_text())
+            results: dict[str, dict[str, BacktestResult]] = {}
+            for model_key, per_horizon in raw["results"].items():
+                results[model_key] = {hk: BacktestResult.from_dict(entry)
+                                      for hk, entry in per_horizon.items()}
+            return {
+                "available": True,
+                "results": results,
+                "generated_at": raw.get("generated_at", 0),
+                "age_hours": (time.time() - raw.get("generated_at", 0)) / 3600.0,
+                "backtest_days": raw.get("backtest_days"),
+                "refit_every": raw.get("refit_every"),
+                "data_end": raw.get("data_end"),
+                "elapsed_seconds": raw.get("elapsed_seconds", 0),
+            }
+        except Exception as exc:
+            log.error("committed backtest unreadable: %s", exc)
+            return {"available": False, "reason": f"Artefact unreadable: {exc}"}
+
+    return {"available": False, "reason": "No backtest has been run yet."}
 
 
 # ---------------------------------------------------------------------------

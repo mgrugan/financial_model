@@ -1,0 +1,70 @@
+# Build the dashboard and publish it to GitHub Pages.
+#
+# This replaces a hosted web service entirely. The models are fitted on the
+# Actions runner (4 vCPU / 16 GB -- more than most free web tiers give you),
+# every view is pre-rendered, and the result is served as static files. There is
+# no server to sleep, no cold start, and no memory limit.
+#
+# The walk-forward backtest is NOT recomputed here; it is read from the
+# committed data/backtest.json and refreshed weekly by backtest.yml.
+
+name: Build dashboard
+
+on:
+  schedule:
+    - cron: "17 * * * *"        # hourly, offset off the hour (runners are busy on :00)
+  push:
+    branches: [claude/bitcoin-ml-options-dashboard-2r0plh, main]
+    paths-ignore: ["README.md", "**/*.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two builds publish at once; a later run supersedes a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build static site
+        run: python -m static.build --out site --clean
+
+      - name: Check the build produced something usable
+        run: |
+          test -f site/index.html || { echo "no index.html"; exit 1; }
+          bytes=$(stat -c%s site/index.html)
+          test "$bytes" -gt 20000 || { echo "index.html suspiciously small: $bytes"; exit 1; }
+          panels=$(ls site/data/*.json | wc -l)
+          test "$panels" -gt 30 || { echo "only $panels panels rendered"; exit 1; }
+          echo "index.html ${bytes} bytes, ${panels} panels"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -37,6 +37,9 @@ def main() -> int:
     parser.add_argument("--refit-every", type=int, default=BACKTEST_REFIT_EVERY)
     parser.add_argument("--out", type=Path, default=BACKTEST_CACHE)
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--json", type=Path, default=Path(__file__).resolve().parent.parent
+                        / "data" / "backtest.json",
+                        help="also write a committable JSON artefact here")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.ERROR if args.quiet else logging.WARNING,
@@ -61,6 +64,16 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "wb") as fh:
         pickle.dump(payload, fh)
+
+    if args.json:
+        import json as _json
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(_json.dumps({
+            **{k: v for k, v in payload.items() if k != "results"},
+            "results": {mk: {hk: r.to_dict() for hk, r in per.items()}
+                        for mk, per in results.items()},
+        }, separators=(",", ":")))
+        print(f"json artefact -> {args.json}")
 
     print(f"\nbacktest complete in {elapsed / 60:.1f} min -> {args.out}")
     print(backtest.summary_frame(results).to_string(index=False))

@@ -179,6 +179,49 @@ class BacktestResult:
     calibration: list[dict[str, Any]] = field(default_factory=list)
     strategy: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe form.
+
+        The artefact is committed to the repository so a static build can read a
+        track record without recomputing 40 minutes of walk-forward. JSON rather
+        than pickle: it survives library upgrades, and it diffs.
+        """
+        return {
+            "model_key": self.model_key,
+            "model_name": self.model_name,
+            "family": self.family,
+            "horizon_key": self.horizon_key,
+            "horizon_days": self.horizon_days,
+            "dates": [str(pd.Timestamp(d).date()) for d in self.dates],
+            "p_up": [round(float(v), 6) for v in self.p_up],
+            "y_true": [int(v) for v in self.y_true],
+            "fwd_logret": [round(float(v), 8) for v in self.fwd_logret],
+            "metrics": {k: (None if isinstance(v, float) and not np.isfinite(v) else v)
+                        for k, v in self.metrics.items()},
+            "calibration": self.calibration,
+            "strategy": {k: (None if isinstance(v, float) and not np.isfinite(v) else v)
+                         for k, v in self.strategy.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BacktestResult":
+        nan = float("nan")
+        clean = lambda d: {k: (nan if v is None else v) for k, v in d.items()}
+        return cls(
+            model_key=payload["model_key"],
+            model_name=payload["model_name"],
+            family=payload["family"],
+            horizon_key=payload["horizon_key"],
+            horizon_days=payload["horizon_days"],
+            dates=pd.DatetimeIndex(pd.to_datetime(payload["dates"])),
+            p_up=np.asarray(payload["p_up"], dtype="float64"),
+            y_true=np.asarray(payload["y_true"], dtype="float64"),
+            fwd_logret=np.asarray(payload["fwd_logret"], dtype="float64"),
+            metrics=clean(payload["metrics"]),
+            calibration=payload.get("calibration", []),
+            strategy=clean(payload.get("strategy", {})),
+        )
+
     def summary_row(self) -> dict[str, Any]:
         return {
             "model_key": self.model_key,
