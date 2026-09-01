@@ -178,6 +178,8 @@ TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bitcoin Model Dashboard</title>
 <meta name="description" content="Eleven stochastic, machine-learning and hybrid models forecasting Bitcoin, with walk-forward backtests and live options analytics.">
+<!-- Inline so the page makes no request the site cannot answer. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233987e5'/%3E%3Cpath d='M9 8h7.2a4.6 4.6 0 0 1 .9 9.1 4.9 4.9 0 0 1-.6 9.9H9zm4 3.2v5h3.1a2.5 2.5 0 0 0 0-5zm0 8v5.4h3.4a2.7 2.7 0 0 0 0-5.4z' fill='%23fff'/%3E%3Cpath d='M14.6 5h2.2v3.6h-2.2zm3.6 0h2.2v3.6h-2.2zM14.6 26h2.2v3.4h-2.2zm3.6 0h2.2v3.4h-2.2z' fill='%23fff'/%3E%3C/svg%3E">
 <script src="plotly.min.js" charset="utf-8"></script>
 <style>{css}</style>
 </head>
