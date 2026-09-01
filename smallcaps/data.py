@@ -103,6 +103,14 @@ def _to_frame(result: dict) -> pd.DataFrame | None:
     frame.index.name = "timestamp"
     frame = frame.astype("float64")
 
+    # Keep the unadjusted close alongside the adjusted one. Returns must use the
+    # adjusted series, but market capitalisation must not: an adjusted price is
+    # scaled backwards through every later split and dividend, so multiplying it
+    # by a point-in-time share count would misstate the market cap of every
+    # historical date by the cumulative adjustment factor -- and misstate it most
+    # for the companies with the most corporate actions.
+    frame["raw_close"] = frame["close"]
+
     # Rescale the whole bar onto the split/dividend-adjusted price scale.
     adj_block = (result.get("indicators", {}).get("adjclose") or [{}])[0]
     adj = adj_block.get("adjclose")
@@ -114,6 +122,7 @@ def _to_frame(result: dict) -> pd.DataFrame | None:
             frame[col] = frame[col] * ratio
 
     frame[["open", "high", "low", "close"]] = frame[["open", "high", "low", "close"]].ffill()
+    frame["raw_close"] = frame["raw_close"].ffill()
     frame["volume"] = frame["volume"].fillna(0.0)
     frame = frame.dropna(subset=["close"])
     frame = frame[frame["close"] > 0]
