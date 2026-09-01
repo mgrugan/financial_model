@@ -203,6 +203,7 @@ TEMPLATE = """<!DOCTYPE html>
     <button class="tab" data-tab="backtest">Backtest</button>
     <button class="tab" data-tab="options">Options</button>
     <button class="tab" data-tab="method">Method</button>
+    <a class="tab tab--link" href="smallcaps.html">Small caps &rarr;</a>
   </nav>
   <div id="content"><div class="panel loading-note">Loading…</div></div>
   <footer class="site-footer">

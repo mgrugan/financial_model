@@ -40,3 +40,8 @@
 /* The static build has no Dash spinner, so fade panels in on swap. */
 #content { animation: fade .16s ease; }
 @keyframes fade { from { opacity: .4; } to { opacity: 1; } }
+
+/* Cross-page link sitting in the tab bar: same shape as a tab, but it navigates
+   rather than switching panels, so it never takes the selected state. */
+.tab--link { text-decoration: none; display: inline-flex; align-items: center; }
+.tab--link:hover { text-decoration: none; }

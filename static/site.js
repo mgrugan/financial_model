@@ -139,7 +139,7 @@
 
   document.getElementById("tabs").addEventListener("click", function (e) {
     var btn = e.target.closest(".tab");
-    if (btn) { state.tab = btn.dataset.tab; render(); }
+    if (btn && btn.dataset.tab) { state.tab = btn.dataset.tab; render(); }
   });
   document.getElementById("horizon-toggle").addEventListener("change", function (e) {
     state.horizon = e.target.value;

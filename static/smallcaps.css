@@ -1,0 +1,111 @@
+/* Small-cap edge study — page-specific styles.
+   Palette roles come from assets/style.css; only the pieces this page adds
+   (verdict chips, the scoreboard, the SVG charts, the table) live here. */
+
+.sc-page { max-width: 1180px; margin: 0 auto; padding: 0 20px 64px; }
+
+.sc-head { padding: 28px 0 18px; border-bottom: 1px solid var(--border); }
+.sc-head h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; }
+.sc-head p { margin: 0; color: var(--text-secondary); max-width: 74ch; line-height: 1.55; }
+.sc-crumbs { display: flex; gap: 14px; align-items: center; margin-bottom: 14px;
+             font-size: 13px; color: var(--text-muted); }
+.sc-crumbs a { color: var(--accent); text-decoration: none; }
+.sc-crumbs a:hover { text-decoration: underline; }
+
+/* ---- headline verdict ------------------------------------------------- */
+.sc-verdict { margin: 22px 0 6px; padding: 20px 22px; border-radius: var(--radius);
+              border: 1px solid var(--border); background: var(--surface-raised);
+              box-shadow: var(--shadow); display: flex; gap: 18px; align-items: flex-start; }
+.sc-verdict-mark { flex: none; width: 44px; height: 44px; border-radius: 50%;
+                   display: grid; place-items: center; font-size: 22px; font-weight: 700;
+                   color: #fff; }
+.sc-verdict--none .sc-verdict-mark { background: var(--status-critical); }
+.sc-verdict--some .sc-verdict-mark { background: var(--status-good); }
+.sc-verdict h2 { margin: 2px 0 6px; font-size: 19px; }
+.sc-verdict p { margin: 0; color: var(--text-secondary); line-height: 1.55; max-width: 82ch; }
+
+/* ---- scoreboard ------------------------------------------------------- */
+.sc-tiles { display: grid; gap: 12px; margin: 18px 0 8px;
+            grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr)); }
+.sc-tile { border: 1px solid var(--border); border-radius: var(--radius);
+           background: var(--surface-raised); padding: 14px 16px; }
+.sc-tile .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em;
+              color: var(--text-muted); margin-bottom: 6px; }
+.sc-tile .v { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; }
+.sc-tile .s { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.4; }
+
+/* ---- sections & charts ------------------------------------------------ */
+.sc-section { margin-top: 34px; }
+.sc-section > h2 { font-size: 17px; margin: 0 0 4px; }
+.sc-section > .lede { color: var(--text-secondary); margin: 0 0 14px; max-width: 80ch;
+                      line-height: 1.55; font-size: 13.5px; }
+
+.sc-charts { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); }
+.sc-card { border: 1px solid var(--border); border-radius: var(--radius);
+           background: var(--surface-raised); padding: 16px 18px 12px; }
+.sc-card h3 { margin: 0 0 2px; font-size: 14px; }
+.sc-card .sub { margin: 0 0 10px; font-size: 12.5px; color: var(--text-muted); }
+.sc-card svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.sc-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px;
+             font-size: 12px; color: var(--text-secondary); }
+.sc-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sc-swatch { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+.sc-swatch--line { width: 14px; height: 0; border-top: 2px dashed currentColor; border-radius: 0; }
+
+/* ---- table ------------------------------------------------------------ */
+.sc-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.sc-controls input[type="search"] { flex: 1 1 220px; min-width: 180px; padding: 7px 10px;
+  border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface);
+  color: var(--text-primary); font: inherit; font-size: 13px; }
+.sc-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px;
+          overflow: hidden; }
+.sc-seg button { border: 0; background: var(--surface); color: var(--text-secondary);
+  font: inherit; font-size: 13px; padding: 7px 13px; cursor: pointer; }
+.sc-seg button + button { border-left: 1px solid var(--border-strong); }
+.sc-seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.sc-count { font-size: 12.5px; color: var(--text-muted); margin-left: auto; }
+
+.sc-table-wrap { overflow-x: auto; border: 1px solid var(--border);
+                 border-radius: var(--radius); background: var(--surface-raised); }
+table.sc-table { width: 100%; border-collapse: collapse; font-size: 13px;
+                 font-variant-numeric: tabular-nums; }
+.sc-table th, .sc-table td { padding: 8px 12px; text-align: right; white-space: nowrap;
+                             border-bottom: 1px solid var(--border); }
+.sc-table th:first-child, .sc-table td:first-child,
+.sc-table th:nth-child(2), .sc-table td:nth-child(2),
+.sc-table th:nth-child(3), .sc-table td:nth-child(3) { text-align: left; }
+.sc-table td:nth-child(2) { white-space: normal; min-width: 180px; color: var(--text-secondary); }
+.sc-table td:nth-child(3) { color: var(--text-muted); font-size: 12px; }
+.sc-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-sunken);
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); cursor: pointer; user-select: none; font-weight: 600; }
+.sc-table thead th:hover { color: var(--text-primary); }
+.sc-table thead th[aria-sort]::after { content: " ▲"; font-size: 9px; }
+.sc-table thead th[aria-sort="descending"]::after { content: " ▼"; }
+.sc-table tbody tr:hover { background: var(--surface-sunken); }
+.sc-table .tk { font-weight: 600; font-family: var(--mono); font-size: 12.5px; }
+
+/* Status is never colour alone: every chip carries a glyph and a word. */
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px;
+        border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
+        border: 1px solid transparent; }
+.chip .glyph { font-size: 11px; line-height: 1; }
+.chip--edge { color: var(--status-good-ink); background: var(--status-good-bg);
+              border-color: var(--status-good-line); }
+.chip--none { color: var(--status-critical-ink); background: var(--status-critical-bg);
+              border-color: var(--status-critical-line); }
+
+.sc-note { font-size: 12.5px; color: var(--text-muted); margin-top: 10px; line-height: 1.6; }
+.sc-prose { color: var(--text-secondary); line-height: 1.65; font-size: 13.5px; max-width: 82ch; }
+.sc-prose h3 { color: var(--text-primary); font-size: 14px; margin: 18px 0 5px; }
+.sc-prose ul { padding-left: 20px; margin: 6px 0; }
+.sc-prose li { margin: 4px 0; }
+.sc-prose code { font-family: var(--mono); font-size: 12px; background: var(--surface-sunken);
+                 padding: 1px 5px; border-radius: 4px; }
+
+.sc-tip { position: fixed; pointer-events: none; z-index: 50; opacity: 0;
+  transition: opacity .09s; background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 9px;
+  font-size: 12px; box-shadow: 0 3px 14px rgba(0,0,0,.18); white-space: nowrap; }
+.sc-tip[data-show="1"] { opacity: 1; }
