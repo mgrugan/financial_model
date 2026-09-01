@@ -128,6 +128,17 @@ def build(out: Path, snapshot=None) -> Path:
     log.info("rendering panels…")
     built = build_panels(snapshot, out)
 
+    # Vendor plotly.js from the installed plotly package rather than a CDN. The
+    # bundled file is exactly the build that produced these figures: plotly.py
+    # 7.0.0 ships plotly.js v4, so the CDN pin this replaced (2.35.2) was two
+    # major versions behind the schema being emitted. It also removes the last
+    # third-party runtime dependency, so the page needs no network at all.
+    import plotly as _plotly
+
+    plotly_js = Path(_plotly.__file__).parent / "package_data" / "plotly.min.js"
+    (out / "plotly.min.js").write_bytes(plotly_js.read_bytes())
+    log.info("vendored plotly.js (%.1f MB)", plotly_js.stat().st_size / 1e6)
+
     css = Path("assets/style.css").read_text()
     extra_css = Path(__file__).with_name("static.css").read_text()
     script = Path(__file__).with_name("site.js").read_text()
@@ -167,7 +178,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bitcoin Model Dashboard</title>
 <meta name="description" content="Eleven stochastic, machine-learning and hybrid models forecasting Bitcoin, with walk-forward backtests and live options analytics.">
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="plotly.min.js" charset="utf-8"></script>
 <style>{css}</style>
 </head>
 <body>

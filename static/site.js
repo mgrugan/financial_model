@@ -47,20 +47,31 @@
     }).then(function (payload) { cache[k] = payload; return payload; });
   }
 
+  function plot(target, id, figure) {
+    var el = target.querySelector("#" + CSS.escape(id));
+    if (!el) return;
+    // Each figure is drawn independently. A figure that fails -- a bad trace, or
+    // Plotly itself missing -- must not take down the panel around it. The
+    // earlier version let one throw escape into the panel's catch block, which
+    // replaced the whole view (tables, cards and all) with an error line.
+    try {
+      Plotly.newPlot(el, figure.data, figure.layout, PLOT_CONFIG);
+    } catch (err) {
+      el.innerHTML = '<div class="loading-note">chart unavailable</div>';
+      if (window.console) console.error("figure " + id + ":", err);
+    }
+  }
+
   function draw(target, payload, greek) {
     target.innerHTML = payload.html;
     Object.keys(payload.figures).forEach(function (id) {
       if (id.indexOf("::") >= 0) return;             // greek variants, handled below
-      var el = target.querySelector("#" + CSS.escape(id));
-      if (el) Plotly.newPlot(el, payload.figures[id].data, payload.figures[id].layout, PLOT_CONFIG);
+      plot(target, id, payload.figures[id]);
     });
     if (greek && greek !== "theta") {
       Object.keys(payload.figures).forEach(function (id) {
         var split = id.split("::");
-        if (split.length === 2 && split[1] === greek) {
-          var el = target.querySelector("#" + CSS.escape(split[0]));
-          if (el) Plotly.newPlot(el, payload.figures[id].data, payload.figures[id].layout, PLOT_CONFIG);
-        }
+        if (split.length === 2 && split[1] === greek) plot(target, split[0], payload.figures[id]);
       });
     }
   }
