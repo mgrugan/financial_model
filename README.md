@@ -188,41 +188,69 @@ Run with `python scripts/run_backtest.py` (roughly half an hour).
 
 ## What the backtest actually found
 
-Across **1,088 walk-forward days** (Aug 2023 – Aug 2026), essentially no model
-demonstrated a reliable directional edge. Only one cleared both bars (positive
-Brier skill *and* AUC above 0.5), and it did so by a margin indistinguishable
-from noise.
+Across **1,088 walk-forward days** (Sep 2023 – Sep 2026), **no model's AUC
+confidence interval excludes 0.5, at either horizon.** Zero of 22 model-horizon
+cells. That is the result.
 
-The diagnosis is specific rather than vague. The dominant driver of the learned
-models' probabilities was `drawdown` — distance below the running all-time high
-— and the **sign of its relationship to forward returns inverted** between the
-training history and the test window:
+Seven-day labels on daily bars overlap 6/7, so the independent sample is
+**n_eff = 155**, not 1,088 — and the interval that follows is wide:
 
-| Model | corr(P(up), drawdown) | 1-week AUC |
+| Model (1 week) | AUC | 95% CI | corr(P(up), drawdown) |
+|---|---|---|---|
+| GARCH(1,1)-t | 0.469 | [0.377, 0.560] | — |
+| Geometric Brownian Motion | 0.468 | [0.376, 0.559] | +0.63 |
+| Random Forest | 0.466 | [0.374, 0.557] | +0.33 |
+| ML-Drift Diffusion | 0.456 | [0.365, 0.547] | +0.66 |
+| LSTM | 0.452 | [0.361, 0.543] | −0.13 |
+| XGBoost | 0.451 | [0.360, 0.542] | +0.30 |
+| MLP | 0.430 | [0.339, 0.520] | +0.27 |
+
+The mechanism is still visible: `drawdown` (distance below the running all-time
+high) drives most of these models' probabilities, and it correlated **−0.129**
+with the forward 7-day return over the test window while the models lean
+positive on it. They learned "near the highs, keep going up" from the 2017 and
+2021 cycles.
+
+**A claim in an earlier version of this file was wrong.** It reported the LSTM
+as the one model above 0.5 at a week (AUC 0.523) because it leaned the other way
+on drawdown. After the fixes below, the LSTM scores **0.452**. Its train/
+validation split had been purging nothing, and a windowed model needs a gap of
+`horizon + seq_len − 1` = 30 days, not 7 — training windows overlapped
+validation windows by up to 23 days, inflating the statistic used to pick the
+stopping epoch. The apparent edge was substantially that leak.
+
+### What the eleven fixes changed
+
+They removed biases and leaks. They did not create edge, and were not expected
+to:
+
+| | before | after |
 |---|---|---|
-| Random Forest | +0.30 | 0.452 |
-| XGBoost | +0.28 | 0.447 |
-| GBM | +0.57 | 0.490 |
-| **LSTM** | **−0.20** | **0.523** |
+| GARCH 24h AUC | 0.488 | **0.523** (Brier skill −0.0016 → **+0.0008**) |
+| Heston 1w AUC | 0.430 | 0.443 |
+| LSTM 1w AUC | 0.523 | **0.452** (leak removed) |
+| MLP 1w AUC | 0.496 | 0.430 (recency weights now applied) |
+| Models with AUC CI excluding 0.5 | 0 / 22 | 0 / 22 |
 
-In the test window `corr(drawdown, forward return) = −0.121`. The tree models had
-learned "near the highs, keep going up" from the 2017 and 2021 bull runs. Every
-model that leaned that way scored below 0.5; the LSTM, the only one whose
-probability leaned the other way, was the only one above 0.5 at one week. Its
-AUC was also unstable across the window (0.607 in the first half, 0.450 in the
-second), which is what an absence of edge looks like when you split it.
+GARCH gained the most, from variance targeting actually running and an Itô term
+that is no longer an estimator of infinity. The LSTM and MLP lost the most, from
+leaks closing. Everything converged toward 0.5, which is the honest picture.
 
-This is not a pipeline bug — feature causality is verified bit-identical. It is
-what a genuine regime change looks like from inside a model, and it is the
-single best argument for the design decision that every live probability on this
-dashboard carries its out-of-sample verdict beside it.
+### Read the trading numbers carefully
 
-**Read the live probabilities in that light.** At the time of writing the
-machine-learning models show 58–66% for the week ahead while their own
-walk-forward AUC over the recent window is below 0.46. The dashboard labels them
-"no out-of-sample edge" for exactly that reason.
+The best 1-week Sharpe is **GBM at 1.06, returning +201.3% against buy-and-hold's
++202.5%.** It is long almost always in a market that tripled. That is beta, not
+skill — and the same caution applies to the hybrid (1.01, +185.9%). A strategy
+that underperforms buy-and-hold on both return and Sharpe has not demonstrated
+anything, however good the Sharpe looks in isolation.
 
----
+### The study is underpowered, and that is a design fact
+
+With n_eff = 155, this window can only resolve an edge of roughly **AUC ≥ 0.625**
+at 80% power. Detecting a true edge of 0.52 would need on the order of *decades*
+of daily data. So the negative result does not say "these models failed" — it
+says this experiment cannot resolve the question either way, and neither can any
+three-year daily backtest. Reporting the interval is the finding.
 
 ## Options analytics
 
