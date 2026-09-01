@@ -274,56 +274,70 @@ Verify the whole stack against live data:
 python scripts/smoke_test.py
 ```
 
-## Deploying to Render
+## Deploying — free, on GitHub Pages
 
-The repository contains a `render.yaml` blueprint. Point Render at the repo,
-choose **New → Blueprint**, and it provisions a single **web service** running
-`gunicorn app:server --workers 1 --threads 4` with a 1 GB disk.
+There is no server. GitHub Actions fits the models on a runner (4 vCPU / 16 GB —
+more than most free web tiers give you), pre-renders every view, and publishes
+static files. Nothing sleeps, nothing cold-starts, there is no memory ceiling,
+and it needs no credit card.
 
-There is deliberately **no cron job**. The natural design would be a nightly job
-regenerating the backtest onto a disk shared with the web service, but Render
-does not allow a disk on a cron job — a scheduled job has nowhere to leave a
-file the web service could read. So the web service, which *can* hold a disk,
-owns the artefact: it generates one on first boot when the disk is empty
-(`BTC_BACKTEST_ON_START=1`) and refreshes it every `BTC_BACKTEST_REFRESH_HOURS`.
-The work runs on a background daemon thread and the heavy numerics release the
-GIL, so serving stays responsive.
+**One-time setup:** in the repository, **Settings → Pages → Source → GitHub
+Actions**. Without that the deploy step fails.
 
-A single gunicorn worker is deliberate on two counts: the fitted models live in
-process memory, so a second worker would train its own copy of all eleven; and a
-Render service with a disk cannot scale past one instance anyway, so two workers
-would only race on the same cache files.
+Then:
 
-**Plan sizing.** A full refresh fits eleven models and takes about a minute on
-two cores. **Standard** (1 CPU / 2 GB) keeps it near that and leaves headroom for
-the tree ensembles. Starter (0.5 CPU / 512 MB) will run, but refreshes take
-several minutes and memory is tight. Free additionally spins the instance down
-after 15 minutes idle, discarding every fitted model and making the next visitor
-sit through a cold rebuild.
-
-**The backtest takes about 40 minutes to generate.** With
-`BTC_BACKTEST_ON_START=1` (the blueprint default) the web service starts one in
-the background on first boot; the Backtest tab shows a "no backtest loaded"
-notice until it finishes, and everything else works meanwhile. To fill it
-sooner, run `python scripts/run_backtest.py` from the Render Shell. Set
-`BTC_BACKTEST_ON_START=0` if you would rather it never run unattended.
-
-### Configuration
-
-| Variable | Default | What it does |
+| Workflow | Schedule | What it does |
 |---|---|---|
-| `BTC_CACHE_DIR` | `.cache` | where price data and backtest artefacts live |
-| `BTC_REFRESH_SECONDS` | `300` | background refresh interval |
-| `BTC_N_PATHS` | `40000` | Monte Carlo paths per model per horizon |
-| `BTC_BACKTEST_DAYS` | `1095` | walk-forward test window |
-| `BTC_REFIT_EVERY` | `45` | re-estimation cadence, in days |
-| `BTC_COST_BPS` | `10` | round-trip transaction cost in the backtest |
-| `BTC_OPT_MAX_DTE` | `10` | expiry window for the options page |
-| `BTC_N_JOBS` | `2` | threads for the tree models |
-| `BTC_BACKTEST_ON_START` | `0` | generate a backtest on first boot if none is cached (blueprint sets `1`) |
-| `BTC_BACKTEST_REFRESH_HOURS` | `24` | how often the web service regenerates it; `0` = once only |
+| `dashboard.yml` | hourly + on push | Fits all eleven models, pulls the live option chain, renders every view, deploys to Pages |
+| `backtest.yml` | weekly (Sun 05:40 UTC) | Re-runs the 40-minute walk-forward and commits `data/backtest.json` |
 
----
+Both can be run on demand from the Actions tab. To build the site locally:
+
+```bash
+python -m static.build --out site --clean
+cd site && python -m http.server 8000     # http://localhost:8000
+```
+
+### Why the backtest is a committed file
+
+`data/backtest.json` is checked in on purpose. It takes 40 minutes to
+regenerate, a static site has no disk to compute one on, and it barely moves
+week to week — it is a three-year walk-forward, so a few extra days at the end
+shift the metrics in the third decimal. The weekly workflow refreshes it and
+refuses to commit an artefact with too few models, too few test days, or an
+implausible AUC.
+
+### How the static build reuses the app
+
+The layout is not rewritten. `static/render_html.py` walks the Dash component
+tree that `dashboard/layout.py` already produces and emits HTML, so the served
+app and the static site come from one definition and cannot drift apart:
+`dcc.Graph` becomes a div plus figure JSON, `DataTable` becomes a `<table>`,
+`Dropdown` becomes a `<select>`.
+
+Each view ships as its own JSON payload rather than being inlined. Rendering
+every tab × theme × horizon × model into one document is about 8 MB the browser
+must parse before first paint; instead the forecast view is inlined (253 KB
+including CSS and script) and the other 117 panels are fetched on click and
+cached. Figures are pre-rendered per theme rather than recoloured in the
+browser, because the palette's light and dark steps are separately validated for
+colour-vision separation against their own surface — one is not a transformation
+of the other.
+
+### Running it as a live server instead
+
+`app.py` is unchanged and still runs the interactive Dash app:
+
+```bash
+python app.py                 # http://localhost:8050
+```
+
+It also still deploys to any host that runs Python. A full refresh of all eleven
+models peaks at **267 MB** of RSS, so it fits a 512 MB instance. Note that
+Render's free tier has no persistent disk — the app handles that (it falls back
+to the committed `data/backtest.json`), but free instances also sleep after 15
+minutes, and waking one refits eleven models on a shared 0.1 CPU. That is why
+this project publishes statically instead.
 
 ## Layout
 
@@ -350,9 +364,20 @@ dashboard/
   components.py           cards, meters, tables
   layout.py               page structure and tab rendering
   callbacks.py            interactivity
+static/
+  build.py                renders every view to a static site
+  render_html.py          Dash component tree -> HTML
+  site.js                 client: tab/model/theme switching, Plotly wiring
+  static.css              controls the served app gets from Dash
 scripts/
   run_backtest.py         offline walk-forward run
+  report.py               terminal report
   smoke_test.py           end-to-end verification against live data
+data/
+  backtest.json           committed walk-forward track record
+.github/workflows/
+  dashboard.yml           hourly build + Pages deploy
+  backtest.yml            weekly walk-forward refresh
 ```
 
 ---
