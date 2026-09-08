@@ -74,6 +74,9 @@ jobs:
       - name: Build today's value screen
         run: python scripts/build_value_screen.py
 
+      - name: Construct the value portfolio
+        run: python scripts/build_portfolio.py
+
       - name: Sanity-check the artefacts before committing
         run: |
           python - <<'PY'
@@ -120,6 +123,21 @@ jobs:
 
           screen = json.loads(pathlib.Path("data/value_screen.json").read_text())
           assert screen["n"] >= 400, f"value screen only covers {screen['n']} companies"
+
+          # The portfolio is a buy list, so its inputs get tighter checks than
+          # the aggregate study does. A single mis-scaled share count or a
+          # one-off earnings year is invisible in a factor average and decisive
+          # in a fifteen-name list.
+          pf = json.loads(pathlib.Path("data/value_portfolio.json").read_text())
+          assert pf["as_of"] == screen["as_of"], "portfolio and screen are from different runs"
+          assert len(pf["holdings"]) >= 10, f"only {len(pf['holdings'])} holdings selected"
+          for h in pf["holdings"]:
+              pb, npe = h.get("pb"), h.get("normalized_pe")
+              assert pb is None or 0.05 < pb < 25, f"{h['ticker']}: implausible P/B {pb}"
+              assert npe is None or 1.0 < npe < 100, (
+                  f"{h['ticker']}: implausible normalised P/E {npe} -- check the share count")
+          ey = pf["expected_return"]["median_normalized_earnings_yield"]
+          assert 0.01 < ey < 0.40, f"implausible expected return {ey:.1%}"
           print(f"OK: value panel {factors['n_stock_periods']} stock-periods, "
                 f"{len(ok)} factor tests, screen {screen['n']} companies")
           PY
@@ -132,7 +150,7 @@ jobs:
                   data/smallcap_null.json data/smallcap_inventory.json \
                   data/smallcap_universe.json data/value_factors.json \
                   data/value_models.json data/value_screen.json \
-                  data/value_survivorship.json
+                  data/value_survivorship.json data/value_portfolio.json
           if git diff --cached --quiet; then
             echo "no change"
           else
