@@ -21,6 +21,8 @@ from __future__ import annotations
 import datetime as dt
 from typing import Iterable
 
+import numpy as np
+
 from .edgar import DURATION_FIELDS, INSTANT_FIELDS, Fact
 
 ANNUAL_DAYS = (330, 400)
@@ -146,6 +148,22 @@ def snapshot(facts: dict[str, list[Fact]], as_of: str,
     # the ~80 filers who only tag LiabilitiesAndStockholdersEquity.
     if "liabilities" not in out and "assets" in out and "equity" in out:
         out["liabilities"] = out["assets"] - out["equity"]
+
+    # Reconcile the two share counts. CommonStockSharesOutstanding is reported
+    # *per share class*, so for a dual-class company it captures one class while
+    # every earnings and equity figure covers the whole company: Central Garden
+    # & Pet reads 12.2m shares against a real 61.5m, and ACM Research 14.2m
+    # against 70.9m. That understates market capitalisation five-fold and sends
+    # the name to the top of a value screen. The weighted-average diluted count
+    # is company-wide by construction but is occasionally tagged in thousands.
+    # Taking the larger of the two plausible candidates fixes every case observed
+    # in this universe and errs the safe way for a value screen: overstating
+    # market cap makes a stock look more expensive, never cheaper.
+    candidates = [v for v in (out.get("shares"), out.get("shares_diluted"))
+                  if v is not None and np.isfinite(v) and v >= 1_000_000]
+    if candidates:
+        out["shares"] = float(max(candidates))
+        out["_shares_disagree"] = float(max(candidates) / min(candidates))
 
     out["_as_of"] = as_of
     out["_latest_period"] = newest

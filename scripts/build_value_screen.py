@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from smallcaps.data import fetch_history
 from value.edgar import cik_map, fetch_company
 from value.factors import COMPOSITES
-from value.metrics import GRAHAM_CRITERIA, compute, graham_scorecard
+from value.metrics import GRAHAM_CRITERIA, compute, graham_scorecard, normalized
 from value.panel import EV_EXCLUDED_SECTORS, _earnings_history, _price_on
 from value.pit import snapshot
 
@@ -51,7 +51,10 @@ def main() -> int:
         metrics = compute(snap, raw, shares)
         if not metrics:
             continue
-        card = graham_scorecard(metrics, _earnings_history(facts, as_of))
+        history = _earnings_history(facts, as_of)
+        card = graham_scorecard(metrics, history)
+        norm = normalized(history, metrics.get("market_cap", float("nan")),
+                          snap.get("net_income"))
         sector = meta.get("sector", "")
         rows.append({
             "ticker": ticker,
@@ -62,6 +65,7 @@ def main() -> int:
             "latest_period": snap.get("_latest_period"),
             "graham_score": card["graham_score"],
             **{k: v for k, v in metrics.items()},
+            **norm,
             **{f"chk_{k}": v for k, v in card["checks"].items()},
         })
 

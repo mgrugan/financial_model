@@ -199,6 +199,39 @@ def compute(snap: dict[str, float], price: float, shares: float | None) -> dict[
     return out
 
 
+def normalized(history: dict[str, Any], market_cap: float,
+               ttm_net_income: float | None) -> dict[str, Any]:
+    """Graham's multi-year average earnings, and a flag for one-off years.
+
+    Graham valued companies on average earnings over five to seven years
+    precisely because a single trailing year is easy to distort. This universe
+    supplies the example: Ziff Davis reported $643m of trailing net income
+    against a five-year record of $41m, $63m and $47m in its last three years,
+    which a trailing P/E reads as 2.9x and prints at the very top of a value
+    screen. On the five-year average the same company is unremarkable.
+
+    ``earnings_one_off`` marks a trailing figure more than double the average --
+    not a judgement that the earnings are fake, but a flag that the cheapness is
+    coming from one year and should be read in the filings before it is bought.
+    """
+    out: dict[str, Any] = {"normalized_earnings": None, "normalized_earnings_yield": None,
+                           "normalized_pe": None, "earnings_one_off": False,
+                           "ttm_to_normalized": None}
+    series = [v for v in (history.get("earnings_5y") or []) if v is not None]
+    if len(series) < 3 or not math.isfinite(market_cap) or market_cap <= 0:
+        return out
+
+    avg = sum(series[-5:]) / len(series[-5:])
+    out["normalized_earnings"] = float(avg)
+    out["normalized_earnings_yield"] = float(avg / market_cap)
+    out["normalized_pe"] = float(market_cap / avg) if avg > 0 else None
+    if ttm_net_income is not None and math.isfinite(ttm_net_income) and avg > 0:
+        ratio = ttm_net_income / avg
+        out["ttm_to_normalized"] = float(ratio)
+        out["earnings_one_off"] = bool(ratio > 2.0)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Graham's defensive criteria, as pass/fail
 # ---------------------------------------------------------------------------

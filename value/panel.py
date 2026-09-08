@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 
 from .edgar import Fact
-from .metrics import compute, graham_scorecard
+from .metrics import compute, graham_scorecard, normalized
 from .pit import snapshot
 
 log = logging.getLogger(__name__)
@@ -129,6 +129,8 @@ def build_panel(prices: dict[str, pd.DataFrame],
 
             history = _earnings_history(company_facts, date)
             card = graham_scorecard(metrics, history)
+            norm = normalized(history, metrics.get("market_cap", float("nan")),
+                              snap.get("net_income"))
 
             sector = sectors.get(ticker, "")
             row: dict[str, Any] = {
@@ -143,6 +145,7 @@ def build_panel(prices: dict[str, pd.DataFrame],
                 "graham_score": card["graham_score"],
                 "n_earnings_years": history["n_years"],
                 **{k: v for k, v in metrics.items() if not k.startswith("_")},
+                **norm,
                 **{f"chk_{k}": v for k, v in card["checks"].items()},
             }
             rows.append(row)

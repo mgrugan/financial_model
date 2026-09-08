@@ -182,6 +182,79 @@ def render_models(models: dict) -> str:
   </div>"""
 
 
+def render_portfolio(pf: dict) -> str:
+    """The buildable portfolio, with its expected return derived honestly."""
+    b, e, rules = pf["backtest"], pf["expected_return"], pf["rules"]
+    holdings = pf["holdings"]
+
+    rows = "".join(
+        f'<tr><td class="tk">{esc(h["ticker"])}</td>'
+        f'<td>{esc(str(h["name"])[:32])}</td>'
+        f'<td class="sc-sector">{esc(h["sector"])}</td>'
+        f'<td>{fmt(h.get("normalized_pe"), ".1f")}</td>'
+        f'<td>{fmt(h.get("pb"), ".2f")}</td>'
+        f'<td>{pct(h.get("normalized_earnings_yield"), "+.1%")}</td>'
+        f'<td>{pct(h.get("fcf_ev_yield"), "+.1%")}</td>'
+        f'<td><strong>{int(h["graham_score"])}</strong>/8</td>'
+        f'<td>{h["weight"]:.1%}</td></tr>' for h in holdings)
+
+    return f"""
+  <div class="sc-section">
+    <h2>A portfolio, and what to actually expect from it</h2>
+    <p class="lede">{len(holdings)} equal-weighted names, chosen by fixed rules applied
+    identically to today and to all {b['n_periods']} historical rebalances: profitable on a
+    five-year average, at least {rules['min_graham_score']} of Graham's 8 defensive tests,
+    debt below {rules['max_debt_to_equity']}× book, positive free cash flow, at least
+    ${rules['min_dollar_volume']/1e6:.0f}m a day of volume, and no more than
+    {rules['max_per_sector']} per sector. Rebalanced semi-annually.</p>
+
+    <div class="sc-charts">
+      <div class="sc-card">
+        <h3>Expected return, from the businesses</h3>
+        <p class="sub">what the holdings earn on the purchase price — no growth, no re-rating</p>
+        <div class="sc-bigz">{e['median_normalized_earnings_yield']:+.1%}
+          <span class="sc-bigz-tag">median normalised earnings yield</span></div>
+        <p class="sc-note" style="margin-top:8px">Median free cash flow / EV
+        <strong>{e['median_fcf_ev_yield']:+.1%}</strong>; median trailing earnings yield
+        <strong>{e['median_earnings_yield_ttm']:+.1%}</strong>. Earnings are averaged over
+        five years, Graham's own method, because one distorted year is what puts a name at
+        the top of a mechanical screen.</p>
+      </div>
+      <div class="sc-card">
+        <h3>Expected return, from the backtest</h3>
+        <p class="sub">the same rules run over {b['n_periods']} rebalances — and why it is not the answer</p>
+        <div class="sc-bigz sc-bigz--void">{b['annualised']:+.1%}
+          <span class="sc-bigz-tag">do not use</span></div>
+        <p class="sc-note" style="margin-top:8px">It beat the universe by
+        {b['excess_annualised']:+.1%}/yr (t = {b['t_excess']:+.2f}). But against a
+        <strong>size-matched</strong> benchmark the excess is
+        <strong>{b['excess_size_matched_annualised']:+.1%}/yr</strong>
+        (t = {b['t_excess_size_matched']:+.2f}), beating it in only
+        {b['hit_rate_size_matched']:.0%} of periods. The outperformance is the size tilt,
+        which in this universe is a selection artifact — not stock-picking.</p>
+      </div>
+    </div>
+
+    <div class="sc-warn"><strong>So what is the honest number?</strong> Roughly
+    <strong>8–12% a year</strong>, which is what these businesses earn and roughly what
+    small-cap equities have returned historically. There is no evidence here that this
+    selection beats simply owning a small-cap index fund — the backtested advantage
+    disappears entirely once size is controlled for. What the rules buy you is a portfolio
+    of profitable, solvent, cheaply-priced companies with a documented reason for each
+    holding, which is a defensible starting point for research, not an edge.</div>
+
+    <div class="sc-table-wrap"><table class="sc-table">
+      <thead><tr><th>Ticker</th><th>Company</th><th>Sector</th><th>P/E (norm)</th>
+      <th>P/B</th><th>Norm. E/P</th><th>FCF/EV</th><th>Graham</th><th>Weight</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table></div>
+    <p class="sc-note">Selected from {pf['n_eligible']} companies passing the gates, as of
+    {esc(pf['as_of'])}. Worst single half-year in the backtest:
+    <strong>{b['worst_period']:+.1%}</strong>; best <strong>{b['best_period']:+.1%}</strong>.
+    A 15-name portfolio is concentrated — that dispersion is the risk being taken.</p>
+  </div>"""
+
+
 def render_screen(screen: dict, factors: dict) -> str:
     rows = screen["rows"]
     ranked = [r for r in rows if r.get("graham_composite") is not None]
@@ -335,6 +408,7 @@ PAGE = """<!DOCTYPE html>
 
   <div class="sc-tiles">{tiles}</div>
 
+  {portfolio}
   {size_evidence}
   {factors}
   {models}
@@ -378,6 +452,8 @@ def build_page(out: Path) -> Path:
     models = json.loads((DATA / "value_models.json").read_text())
     screen = json.loads((DATA / "value_screen.json").read_text())
     surv = json.loads((DATA / "value_survivorship.json").read_text())
+    pf_path = DATA / "value_portfolio.json"
+    portfolio = json.loads(pf_path.read_text()) if pf_path.exists() else None
 
     results = [r for r in factors["results"] if r.get("status") == "ok"]
     neutral = [r for r in results if r.get("size_neutral")]
@@ -437,6 +513,7 @@ def build_page(out: Path) -> Path:
         n_companies=factors["n_companies"],
         n_periods=factors["n_rebalances"],
         first_date=esc(dates[0] if dates else ""), last_date=esc(dates[-1] if dates else ""),
+        portfolio=render_portfolio(portfolio) if portfolio else "",
         size_evidence=render_size_evidence(surv),
         factors=render_factors(factors),
         models=render_models(models),
