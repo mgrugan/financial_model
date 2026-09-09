@@ -19,6 +19,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pandas as pd
+
+from insider.signal import InsiderIndex
 from smallcaps.data import fetch_history
 from value.edgar import cik_map, fetch_company
 from value.factors import COMPOSITES
@@ -32,6 +35,9 @@ def main() -> int:
     rows_meta = [r for r in inv["rows"] if r["ok"]]
     mapping = cik_map()
     as_of = dt.date.today().isoformat()
+
+    ins_path = Path("data/insider_transactions.pkl")
+    index = InsiderIndex(pd.read_pickle(ins_path)) if ins_path.exists() else None
 
     rows = []
     for meta in rows_meta:
@@ -55,6 +61,10 @@ def main() -> int:
         card = graham_scorecard(metrics, history)
         norm = normalized(history, metrics.get("market_cap", float("nan")),
                           snap.get("net_income"))
+        ins = {}
+        if index is not None and cik:
+            ins = index.metrics(cik, as_of, metrics.get("market_cap"))
+
         sector = meta.get("sector", "")
         rows.append({
             "ticker": ticker,
@@ -66,6 +76,7 @@ def main() -> int:
             "graham_score": card["graham_score"],
             **{k: v for k, v in metrics.items()},
             **norm,
+            **ins,
             **{f"chk_{k}": v for k, v in card["checks"].items()},
         })
 

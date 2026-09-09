@@ -59,6 +59,13 @@ jobs:
       - name: Pull SEC EDGAR fundamentals
         run: python scripts/download_fundamentals.py
 
+      - name: Pull SEC Form 4 insider transactions
+        run: python scripts/download_insider.py
+
+      - name: Pull Senate STOCK Act disclosures
+        run: python scripts/download_senate.py
+        continue-on-error: true      # eFD is flaky; the rest of the study stands without it
+
       - name: Build the point-in-time value panel
         run: python scripts/build_value_panel.py
 
@@ -74,13 +81,20 @@ jobs:
       - name: Build today's value screen
         run: python scripts/build_value_screen.py
 
-      - name: Construct the value portfolio
+      - name: Construct the portfolio
         run: python scripts/build_portfolio.py
+
+      - name: Build the senator portfolio
+        run: python scripts/build_senate_portfolio.py
+        continue-on-error: true
 
       - name: Sanity-check the artefacts before committing
         run: |
           python - <<'PY'
+          import datetime as dt
           import json, pathlib
+
+          import pandas as pd
 
           screen = json.loads(pathlib.Path("data/smallcap_screen.json").read_text())
           rows = [r for r in screen["rows"] if r.get("status") == "ok"]
@@ -136,8 +150,18 @@ jobs:
               assert pb is None or 0.05 < pb < 25, f"{h['ticker']}: implausible P/B {pb}"
               assert npe is None or 1.0 < npe < 100, (
                   f"{h['ticker']}: implausible normalised P/E {npe} -- check the share count")
-          ey = pf["expected_return"]["median_normalized_earnings_yield"]
-          assert 0.01 < ey < 0.40, f"implausible expected return {ey:.1%}"
+          # The insider signal is what the headline portfolio now ranks on, so
+          # its inputs get checked too. A collapse in Form 4 coverage would
+          # quietly turn the ranking into noise rather than failing loudly.
+          ins = pd.read_pickle("data/insider_transactions.pkl")
+          buys = ins[ins["is_buy"]]
+          assert len(buys) > 10000, f"only {len(buys)} insider buys parsed"
+          assert buys["value"].sum() < 1e12, (
+              "insider buy notional implausible -- a price-per-share unit error "
+              "is probably back")
+          assert str(ins["filed"].max()) >= (
+              dt.date.today() - dt.timedelta(days=45)).isoformat(), (
+              "insider data is stale; the recent Form 4 top-up did not run")
           print(f"OK: value panel {factors['n_stock_periods']} stock-periods, "
                 f"{len(ok)} factor tests, screen {screen['n']} companies")
           PY

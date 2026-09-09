@@ -1,0 +1,178 @@
+{
+ "generated_at": "2026-09-09T14:20:33Z",
+ "as_of": "2026-09-09",
+ "window_months": 12,
+ "n_holdings": 10,
+ "holdings": [
+  {
+   "ticker": "CAG",
+   "name": "Conagra Brands",
+   "sector": "Consumer Staples",
+   "index": "S&P 600",
+   "n_buys": 2,
+   "senators": 2,
+   "senator_names": [
+    "Alan Armstrong",
+    "Gary C Peters"
+   ],
+   "last_trade": "2026-03-27",
+   "last_filed": "2026-07-21",
+   "est_usd": 16001.0,
+   "weight": 0.1
+  },
+  {
+   "ticker": "CPB",
+   "name": "The Campbell's Company",
+   "sector": "Consumer Staples",
+   "index": "S&P 600",
+   "n_buys": 1,
+   "senators": 1,
+   "senator_names": [
+    "Alan Armstrong"
+   ],
+   "last_trade": "2026-03-27",
+   "last_filed": "2026-07-21",
+   "est_usd": 8000.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "POOL",
+   "name": "Pool Corporation",
+   "sector": "Consumer Discretionary",
+   "index": "S&P 600",
+   "n_buys": 1,
+   "senators": 1,
+   "senator_names": [
+    "Alan Armstrong"
+   ],
+   "last_trade": "2026-03-27",
+   "last_filed": "2026-07-21",
+   "est_usd": 8000.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "AMKR",
+   "name": "Amkor Technology",
+   "sector": "Information Technology",
+   "index": "S&P 400",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "APG",
+   "name": "APi Group",
+   "sector": "Industrials",
+   "index": "S&P 400",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "CRS",
+   "name": "Carpenter Technology",
+   "sector": "Industrials",
+   "index": "S&P 400",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "FCFS",
+   "name": "FirstCash",
+   "sector": "Financials",
+   "index": "S&P 400",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "LRN",
+   "name": "Stride, Inc.",
+   "sector": "Consumer Discretionary",
+   "index": "S&P 600",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "VSEC",
+   "name": "VSE Corporation",
+   "sector": "Industrials",
+   "index": "S&P 600",
+   "n_buys": 3,
+   "senators": 1,
+   "senator_names": [
+    "Markwayne Mullin"
+   ],
+   "last_trade": "2026-02-04",
+   "last_filed": "2026-03-02",
+   "est_usd": 97501.5,
+   "weight": 0.1
+  },
+  {
+   "ticker": "WPC",
+   "name": "W. P. Carey",
+   "sector": "Real Estate",
+   "index": "S&P 400",
+   "n_buys": 1,
+   "senators": 1,
+   "senator_names": [
+    "Gary C Peters"
+   ],
+   "last_trade": "2026-01-12",
+   "last_filed": "2026-01-20",
+   "est_usd": 32500.5,
+   "weight": 0.1
+  }
+ ],
+ "event_study": {
+  "n_events": 104,
+  "n_distinct_filing_dates": 30,
+  "n_distinct_senators": 8,
+  "mean_6m_return": 0.1113303606730171,
+  "median_6m_return": 0.10501194539656966,
+  "mean_excess_vs_ijr": 0.032650463113002855,
+  "t_naive": 1.2431714790400257,
+  "t_clustered_by_date": 0.6676901903416227,
+  "hit_rate": 0.5769230769230769,
+  "median_lag_days": 30.0,
+  "p90_lag_days": 586.0
+ },
+ "coverage": {
+  "reports_searched": 535,
+  "reports_unparseable": 186,
+  "all_transactions": 3142,
+  "smallmid_purchases": 107
+ }
+}

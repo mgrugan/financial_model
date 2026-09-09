@@ -10,6 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pandas as pd
+
+from insider.signal import InsiderIndex
 from smallcaps.data import fetch_history
 from value.edgar import cik_map, fetch_company
 from value.panel import build_panel, rebalance_dates
@@ -37,12 +40,20 @@ def main() -> int:
         prices[t], facts[t] = frame, data
     print(f"{len(prices)} companies with both prices and filings", flush=True)
 
+    insider_path = Path("data/insider_transactions.pkl")
+    index = None
+    ticker_ciks = {t: mapping[t.upper()] for t in prices if t.upper() in mapping}
+    if insider_path.exists():
+        index = InsiderIndex(pd.read_pickle(insider_path))
+        print(f"insider index: {len(index.by_cik)} issuers with Form 4 history", flush=True)
+
     dates = rebalance_dates()
     print(f"{len(dates)} semi-annual rebalances: {dates[0]} .. {dates[-1]}", flush=True)
 
     t0 = time.time()
     panel = build_panel(prices, facts, sectors, names, dates,
-                        progress=lambda m: print(m, flush=True))
+                        progress=lambda m: print(m, flush=True),
+                        insider=index, ciks=ticker_ciks)
     print(f"\npanel: {len(panel)} rows in {time.time()-t0:.0f}s", flush=True)
 
     out = Path("data/value_panel.pkl")

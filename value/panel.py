@@ -97,8 +97,15 @@ def build_panel(prices: dict[str, pd.DataFrame],
                 sectors: dict[str, str],
                 names: dict[str, str] | None = None,
                 dates: list[str] | None = None,
-                progress: Any = None) -> pd.DataFrame:
-    """One row per (ticker, rebalance date) with metrics and forward return."""
+                progress: Any = None,
+                insider: Any = None,
+                ciks: dict[str, str] | None = None) -> pd.DataFrame:
+    """One row per (ticker, rebalance date) with metrics and forward return.
+
+    ``insider`` is an optional ``InsiderIndex``. Its metrics are keyed on the
+    Form 4 filing date, so they obey the same point-in-time rule as everything
+    else on the row.
+    """
     dates = dates or rebalance_dates()
     names = names or {}
     rows: list[dict[str, Any]] = []
@@ -132,6 +139,11 @@ def build_panel(prices: dict[str, pd.DataFrame],
             norm = normalized(history, metrics.get("market_cap", float("nan")),
                               snap.get("net_income"))
 
+            ins = {}
+            if insider is not None and ciks and ticker in ciks:
+                ins = insider.metrics(ciks[ticker], date,
+                                      metrics.get("market_cap"))
+
             sector = sectors.get(ticker, "")
             row: dict[str, Any] = {
                 "date": date,
@@ -146,6 +158,7 @@ def build_panel(prices: dict[str, pd.DataFrame],
                 "n_earnings_years": history["n_years"],
                 **{k: v for k, v in metrics.items() if not k.startswith("_")},
                 **norm,
+                **ins,
                 **{f"chk_{k}": v for k, v in card["checks"].items()},
             }
             rows.append(row)

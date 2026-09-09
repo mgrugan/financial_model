@@ -90,6 +90,21 @@ FACTORS: list[Factor] = [
            "Graham-number ratio."),
     Factor("burry_composite", "Burry composite", "burry_composite", True, True,
            "Burry", "Equal-weight blend of EBITDA/EV and free cash flow/EV."),
+    # --- insider buying -------------------------------------------------
+    # Counts and dollar flows from Form 4 open-market purchases. Ranked like
+    # any other signal and held to the same size-neutral standard, because
+    # insider buying is more common in smaller companies and would otherwise
+    # re-import the survivorship artifact through the back door.
+    Factor("insider_buyers", "Insider buyers (6m)", "insider_buyers", True, False,
+           "Insider", "Distinct insiders making open-market purchases -- cluster "
+           "buying is the form of the signal that has held up best."),
+    Factor("insider_buy_ratio", "Insider buy share of flow", "insider_buy_ratio",
+           True, False, "Insider",
+           "Buy dollars as a share of all insider dollar flow, where there was any."),
+    Factor("insider_buy_mcap", "Insider buying / market cap", "insider_buy_to_mcap",
+           True, False, "Insider",
+           "Dollars bought scaled by company size, so a $1m purchase counts for "
+           "more in a $200m company than a $5bn one."),
 ]
 
 

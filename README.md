@@ -444,6 +444,89 @@ description of what is statistically cheap today — a starting point for readin
 annual reports, which is what both Graham and Burry actually did — and explicitly
 not as a signal.
 
+## Insider buying — the one signal that survived
+
+Open-market insider purchases from SEC Form 4, via the quarterly Form 345
+datasets topped up with live EDGAR filings. Only transaction code `P` counts:
+grants, vesting and option exercises are not decisions to buy at the current
+price. Everything is keyed on the **filing** date, so the point-in-time rule
+holds.
+
+| Signal | Pooled t | Sector-neutral t | Sector + size neutral t | Periods positive |
+|---|---|---|---|---|
+| Insider buyers (6m) | +3.02 | +4.14 | **+1.88** | 75% |
+| Insider buy share of flow | +3.90 | +4.73 | **+2.01** | 79% |
+| Insider buying / market cap | +4.28 | +4.87 | **+1.64** | 79% |
+
+Six of the nine factors surviving Benjamini–Hochberg across 45 tests are
+insider factors. Crucially, **unlike every value factor these do not reverse
+under size control** — they shrink but stay positive, where book/price and the
+Burry composite flip negative.
+
+Four independent checks all hold:
+- **Monotonic quintiles**: +7.3% → +7.8% → +8.6% → +9.6% → +11.2% by number of buyers.
+- **Both halves** of the sample positive and independently significant.
+- **Not reversal in disguise**: correlation with the prior 6-month return is **+0.003**,
+  and controlling for it *strengthens* the signal.
+- Controlling for size *and* momentum, the long-only top quintile beats the universe by
+  **+2.75% per six months (t = +3.50, 79% of periods)**.
+
+This matches the published insider-trading literature rather than being a novel
+data-mined claim, which is reassuring rather than suspicious.
+
+### The value gates destroy it
+
+Ranking on insider buying inside the Graham-eligible pool versus across the
+unfiltered universe — same signal, same benchmark, same code:
+
+| Filter | 15 names | 30 | 50 | 100 |
+|---|---|---|---|---|
+| Graham value gates | +0.4% | −0.0% | +0.2% | −0.3% |
+| No value gates | **+8.9%** | **+4.2%** | **+3.6%** | **+3.6%** |
+
+(excess over a size-matched benchmark, annualised)
+
+Every gated configuration is flat or negative; every ungated one is positive.
+The value screen removes exactly the companies where an insider's purchase is
+informative. Run as a blend at 30 names, the value leg is significantly
+**harmful** (−4.5%/yr, t = −2.53) while the insider leg is positive (+4.2%/yr,
+t = +1.94).
+
+The shipped portfolio is therefore insider-ranked with no valuation filter. Its
+expected return cannot be underwritten from earnings the way the value portfolio
+could — it holds companies that are not cheap, and four of thirty are unprofitable
+on a five-year average. The case for it rests entirely on the backtested signal.
+
+## What senators bought
+
+Every Senate Periodic Transaction Report since 2023, parsed from the official
+eFD system. 535 reports searched, 186 of them scanned paper filings with no
+machine-readable table (counted, not quietly dropped).
+
+**There is no edge here that the data can demonstrate.** 107 senator purchases
+touch a small or mid cap across three and a half years, from 9 senators, and no
+name has ever been bought by more than two of them. Measured from the disclosure
+date — the earliest anyone outside the Senate could act — the mean excess over
+the small-cap index is +3.3%, but the 104 events fall on only **30 distinct
+filing dates**, and one senator disclosing six names in a day is one decision,
+not six. Clustered properly, **t = +0.67**.
+
+The disclosure lag is the structural problem: median **30 days**, 90th
+percentile **586 days**. The statute allows 45; the tail runs well past it.
+
+### A universe bug this exposed
+
+Building the mid-cap universe surfaced a scraping bug worth recording. These
+Wikipedia pages carry a second table logging every historical index addition and
+removal, and it has a "Ticker" column too. Picking whichever table had the most
+ticker-like rows got the S&P 600 right *by accident* (603 constituents vs 491
+logged changes) and the S&P 400 badly wrong (619 changes vs 400 constituents) —
+producing a "mid-cap" universe full of companies that had **left** the index,
+including the mega-caps that left by being promoted. AMD, Fortinet and Monolithic
+Power all appeared as mid caps. The constituent table is now identified by shape
+(a symbol column paired with a company-name column, and no Added/Removed/Date
+columns) rather than by size. All prior small-cap work was unaffected.
+
 ## Options analytics
 
 Priced with **Black-76 on each expiry's own forward** rather than Black-Scholes

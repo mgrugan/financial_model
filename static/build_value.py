@@ -182,6 +182,143 @@ def render_models(models: dict) -> str:
   </div>"""
 
 
+def render_insider(factors: dict, pf: dict) -> str:
+    """The one signal in this project that survived every control."""
+    res = [r for r in factors["results"] if r.get("status") == "ok"]
+    ins = [r for r in res if r.get("tradition") == "Insider"]
+    by = {}
+    for r in ins:
+        mode = ("sec+size" if r["size_neutral"]
+                else "sector" if r["sector_neutral"] else "pooled")
+        by.setdefault(r["key"], {})[mode] = r
+
+    rows = []
+    for key, modes in by.items():
+        base = modes.get("sector") or next(iter(modes.values()))
+        cell_parts = []
+        for m in ("pooled", "sector", "sec+size"):
+            r = modes.get(m)
+            if not r:
+                cell_parts.append("<td>—</td><td>—</td>")
+                continue
+            strong = ' class="sc-strong"' if abs(r["t_spread"]) >= 2 else ""
+            cell_parts.append(f"<td>{r['mean_spread']:+.2%}</td>"
+                              f"<td{strong}>{r['t_spread']:+.2f}</td>")
+        cells = "".join(cell_parts)
+        rows.append(f'<tr><td class="sc-flabel">{esc(base["label"])}</td>{cells}'
+                    f'<td>{base["hit_rate"]:.0%}</td></tr>')
+
+    sweep = pf.get("sweep", [])
+    sweep_rows = "".join(
+        f'<tr><td>{esc("Graham value gates" if s["gates"]=="graham" else "no value gates")}</td>'
+        f'<td>{s["n_holdings"]}</td><td>{s["annualised"]:+.1%}</td>'
+        f'<td class="{"sc-pos" if s["excess_size_matched"]>0 else "sc-neg"}">'
+        f'{s["excess_size_matched"]:+.1%}</td>'
+        f'<td>{s["t"]:+.2f}</td><td>{s["hit_rate"]:.0%}</td></tr>' for s in sweep)
+
+    return f"""
+  <div class="sc-section">
+    <h2>Insider buying — the one thing that survived</h2>
+    <p class="lede">Open-market purchases from SEC Form 4, keyed on the filing date so the
+    point-in-time rule holds. Only transaction code <code>P</code> counts: grants, vesting
+    and option exercises are not decisions to buy at the current price. Sales are recorded
+    but not treated as the mirror image — insiders sell to diversify and to pay tax, so a
+    sale is weak evidence where a purchase is not.</p>
+    <div class="sc-table-wrap"><table class="sc-table sc-factors">
+      <thead><tr><th rowspan="2">Signal</th><th colspan="2">Pooled</th>
+      <th colspan="2">Sector-neutral</th><th colspan="2">Sector + size neutral</th>
+      <th rowspan="2">Periods<br>positive</th></tr>
+      <tr><th>spread</th><th>t</th><th>spread</th><th>t</th><th>spread</th><th>t</th></tr></thead>
+      <tbody>{''.join(rows)}</tbody>
+    </table></div>
+    <p class="sc-note">Unlike every value factor, these do not reverse under size control —
+    they shrink but stay positive. Quintiles are monotonic (+7.3% → +11.2% by number of
+    buyers), both halves of the sample are positive and significant independently, and the
+    signal is uncorrelated with the prior six-month return (<strong>+0.003</strong>), so it
+    is not reversal in disguise. Controlling for size <em>and</em> momentum, the long-only
+    top quintile beats the universe by <strong>+2.75% per six months (t = +3.50, 79% of
+    periods)</strong>. That is consistent with the published insider-trading literature
+    rather than being a novel discovery, which is reassuring rather than suspicious.</p>
+
+    <h3 style="margin-top:22px;font-size:15px">The value gates destroy it</h3>
+    <p class="lede">Ranking on insider buying inside the Graham-eligible pool, versus across
+    the unfiltered universe. Same signal, same benchmark, same code — only the filter
+    changes.</p>
+    <div class="sc-table-wrap"><table class="sc-table">
+      <thead><tr><th>Filter</th><th>Names held</th><th>Annualised</th>
+      <th>vs size-matched</th><th>t</th><th>Periods won</th></tr></thead>
+      <tbody>{sweep_rows}</tbody>
+    </table></div>
+    <p class="sc-note">Every gated configuration is flat or negative; every ungated one is
+    positive. The value screen removes exactly the companies where an insider's purchase is
+    informative — the marginal and unloved ones — and keeps those where it is least
+    surprising. Run as a blend at 30 names, the value leg is significantly
+    <em>harmful</em> (−4.5%/yr, t = −2.53) while the insider leg is positive
+    (+4.2%/yr, t = +1.94).</p>
+  </div>"""
+
+
+def render_senate(sen: dict) -> str:
+    st = sen.get("event_study") or {}
+    cov = sen.get("coverage", {})
+    holdings = sen.get("holdings", [])
+    rows = "".join(
+        f'<tr><td class="tk">{esc(h["ticker"])}</td><td>{esc(str(h["name"])[:34])}</td>'
+        f'<td class="sc-sector">{esc(h["index"])}</td>'
+        f'<td>{h["senators"]}</td><td>{h["n_buys"]}</td>'
+        f'<td>{esc(h["last_trade"])}</td><td>{esc(h["last_filed"])}</td></tr>'
+        for h in holdings)
+    if not st:
+        return ""
+    return f"""
+  <div class="sc-section">
+    <h2>What senators bought</h2>
+    <p class="lede">Every Periodic Transaction Report filed with the Senate since 2023,
+    parsed from the official eFD system and matched to the small and mid-cap universe.
+    {cov.get('reports_searched', 0)} reports were searched;
+    {cov.get('reports_unparseable', 0)} are scanned paper filings with no machine-readable
+    table and are counted rather than quietly dropped.</p>
+    <div class="sc-charts">
+      <div class="sc-card">
+        <h3>Does following them work?</h3>
+        <p class="sub">6-month return from the <em>disclosure</em> date — the earliest anyone
+        outside the Senate could act</p>
+        <div class="sc-bigz">{st['mean_excess_vs_ijr']:+.1%}
+          <span class="sc-bigz-tag">excess vs the small-cap index</span></div>
+        <p class="sc-note" style="margin-top:8px">On {st['n_events']} purchases — but those
+        fall on only <strong>{st['n_distinct_filing_dates']} distinct filing dates</strong>
+        from {st['n_distinct_senators']} senators, and one senator disclosing six names in a
+        day is one decision, not six. Treating the events as independent gives
+        t = {st['t_naive']:+.2f}; clustering by filing date, the honest figure, gives
+        <strong>t = {st['t_clustered_by_date']:+.2f}</strong>. It beat the index
+        {st['hit_rate']:.0%} of the time. There is no edge here that this data can
+        demonstrate.</p>
+      </div>
+      <div class="sc-card">
+        <h3>The disclosure lag</h3>
+        <p class="sub">days between the trade and the filing that reveals it</p>
+        <div class="sc-bigz">{st['median_lag_days']:.0f}<span class="sc-bigz-tag">days, median</span></div>
+        <p class="sc-note" style="margin-top:8px">The 90th percentile is
+        <strong>{st['p90_lag_days']:.0f} days</strong>. The statute allows 45; the tail runs
+        well past it. By the time a purchase is public it is typically a month old and
+        sometimes more than a year, so the price that matters has already moved.</p>
+      </div>
+    </div>
+    <p class="lede" style="margin-top:16px">The {len(holdings)} small and mid caps disclosed
+    in the last {sen.get('window_months', 12)} months, most-supported first:</p>
+    <div class="sc-table-wrap"><table class="sc-table">
+      <thead><tr><th>Ticker</th><th>Company</th><th>Index</th><th>Senators</th>
+      <th>Disclosures</th><th>Last trade</th><th>Disclosed</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table></div>
+    <p class="sc-note">Note how thin this is. Across three and a half years only
+    {cov.get('smallmid_purchases', 0)} senator purchases touch a small or mid cap at all, and
+    no name has ever been bought by more than two senators. Senators overwhelmingly buy large
+    caps; there is no cluster signal to find down here, and the position sizes disclosed are
+    a few thousand to a few hundred thousand dollars — personal savings, not conviction.</p>
+  </div>"""
+
+
 def render_portfolio(pf: dict) -> str:
     """The buildable portfolio, with its expected return derived honestly."""
     b, e, rules = pf["backtest"], pf["expected_return"], pf["rules"]
@@ -408,7 +545,9 @@ PAGE = """<!DOCTYPE html>
 
   <div class="sc-tiles">{tiles}</div>
 
+  {insider}
   {portfolio}
+  {senate}
   {size_evidence}
   {factors}
   {models}
@@ -454,6 +593,8 @@ def build_page(out: Path) -> Path:
     surv = json.loads((DATA / "value_survivorship.json").read_text())
     pf_path = DATA / "value_portfolio.json"
     portfolio = json.loads(pf_path.read_text()) if pf_path.exists() else None
+    sen_path = DATA / "senate_portfolio.json"
+    senate = json.loads(sen_path.read_text()) if sen_path.exists() else None
 
     results = [r for r in factors["results"] if r.get("status") == "ok"]
     neutral = [r for r in results if r.get("size_neutral")]
@@ -513,6 +654,8 @@ def build_page(out: Path) -> Path:
         n_companies=factors["n_companies"],
         n_periods=factors["n_rebalances"],
         first_date=esc(dates[0] if dates else ""), last_date=esc(dates[-1] if dates else ""),
+        insider=render_insider(factors, portfolio) if portfolio else "",
+        senate=render_senate(senate) if senate else "",
         portfolio=render_portfolio(portfolio) if portfolio else "",
         size_evidence=render_size_evidence(surv),
         factors=render_factors(factors),
@@ -557,6 +700,8 @@ EXTRA_CSS = """
 .sc-bench-g span { font-size: 12px; font-weight: 400; color: var(--text-muted);
                    margin-left: 5px; letter-spacing: 0; }
 .sc-bench-d { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.sc-pos { color: var(--status-good-ink); font-weight: 600; }
+.sc-neg { color: var(--status-critical-ink); font-weight: 600; }
 """
 
 

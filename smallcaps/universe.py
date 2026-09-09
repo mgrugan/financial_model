@@ -61,12 +61,31 @@ def _scrape(url: str, index_name: str) -> list[dict[str, str]]:
     resp.raise_for_status()
     tables = pd.read_html(io.StringIO(resp.text))
 
-    # Pick the table that actually looks like a constituent list.
+    # Pick the constituent list, and do it deterministically.
+    #
+    # These pages carry a second table logging every historical addition and
+    # removal, and it has a "Ticker" column too. Choosing whichever table has
+    # the most ticker-like rows gets this right for the S&P 600 purely by
+    # accident -- 603 constituents against 491 logged changes -- and wrong for
+    # the S&P 400, where 619 changes outnumber 400 constituents. Picking the
+    # changes log yields a universe full of companies that *left* the index,
+    # including the mega-caps that left by being promoted: AMD, Fortinet and
+    # Monolithic Power all showed up as "mid caps".
+    #
+    # So identify the constituent table by shape instead: it pairs a symbol
+    # column with a company-name column and, unlike the changes log, has no
+    # Added/Removed/Date columns.
     best: list[dict[str, str]] = []
     for table in tables:
-        cols = {str(c).strip().lower(): c for c in table.columns}
+        flat = [" ".join(str(x) for x in c) if isinstance(c, tuple) else str(c)
+                for c in table.columns]
+        cols = {c.strip().lower(): orig for c, orig in zip(flat, table.columns)}
+        if any(k in cols for k in ("date", "reason")) or \
+           any("added" in k or "removed" in k for k in cols):
+            continue
         sym_col = next((cols[k] for k in cols if "symbol" in k or "ticker" in k), None)
-        if sym_col is None:
+        name_col_present = any("security" in k or "company" in k for k in cols)
+        if sym_col is None or not name_col_present:
             continue
         name_col = next((cols[k] for k in cols if "security" in k or "company" in k), sym_col)
         sec_col = next((cols[k] for k in cols if "sector" in k and "sub" not in k), None)
