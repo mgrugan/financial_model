@@ -1,0 +1,179 @@
+{
+ "generated_at": "2026-09-13T05:25:34Z",
+ "senate": {
+  "raw_purchase_rows": 1336,
+  "household_decisions": 1189,
+  "household_inflation": 1.1236333052985703,
+  "owner_breakdown": {
+   "Joint": 659,
+   "Self": 455,
+   "Spouse": 214,
+   "Child": 8
+  },
+  "share_from_bulk_days": 0.6576955424726662,
+  "largest_single_day_basket": 256,
+  "n_filers": 20,
+  "matched_to_committee": 876,
+  "events": [
+   {
+    "label": "All household purchases",
+    "status": "ok",
+    "n": 757,
+    "n_dates": 132,
+    "mean_excess": -0.005582734236416988,
+    "t_naive": -0.6553853486295413,
+    "t_clustered": -0.27367539539114233,
+    "hit_rate": 0.4478203434610304
+   },
+   {
+    "label": "Bulk account days (5+ names at once)",
+    "status": "ok",
+    "n": 433,
+    "n_dates": 32,
+    "mean_excess": -0.005086274363383515,
+    "t_naive": -0.4483707881340469,
+    "t_clustered": -0.12189007690233444,
+    "hit_rate": 0.4387990762124711
+   },
+   {
+    "label": "Discretionary (1-2 names that day)",
+    "status": "ok",
+    "n": 264,
+    "n_dates": 110,
+    "mean_excess": 0.00015824593462575014,
+    "t_naive": 0.01078467863959,
+    "t_clustered": 0.006961480127555154,
+    "hit_rate": 0.48484848484848486
+   },
+   {
+    "label": "Single-name conviction buys",
+    "status": "ok",
+    "n": 170,
+    "n_dates": 97,
+    "mean_excess": 0.014278122338189406,
+    "t_naive": 0.8259507008635512,
+    "t_clustered": 0.6239007855935775,
+    "hit_rate": 0.4823529411764706
+   }
+  ],
+  "committee": [
+   {
+    "label": "In committee jurisdiction",
+    "status": "ok",
+    "n": 19,
+    "n_dates": 10,
+    "mean_excess": 0.04287096432460505,
+    "t_naive": 1.0097498793977326,
+    "t_clustered": 0.7325495560545037,
+    "hit_rate": 0.6842105263157895
+   },
+   {
+    "label": "Outside jurisdiction",
+    "status": "ok",
+    "n": 438,
+    "n_dates": 97,
+    "mean_excess": -0.0017302363301619243,
+    "t_naive": -0.1578996787253365,
+    "t_clustered": -0.07430705652638839,
+    "hit_rate": 0.4474885844748858
+   }
+  ]
+ },
+ "house": {
+  "raw_purchase_rows": 7015,
+  "household_decisions": 6579,
+  "n_filers": 96,
+  "share_via_named_manager": 0.8670149451130803,
+  "largest_single_day_basket": 149,
+  "matched_to_committee": 6041,
+  "events": [
+   {
+    "label": "All House purchases",
+    "status": "ok",
+    "n": 5668,
+    "n_dates": 568,
+    "mean_excess": -0.01248301790740393,
+    "t_naive": -3.2500725219109667,
+    "t_clustered": -1.0288505615987629,
+    "hit_rate": 0.4216654904728299
+   },
+   {
+    "label": "Bulk account days",
+    "status": "ok",
+    "n": 3488,
+    "n_dates": 142,
+    "mean_excess": -0.01201993484557887,
+    "t_naive": -2.414652514792833,
+    "t_clustered": -0.48720369757478726,
+    "hit_rate": 0.41456422018348627
+   },
+   {
+    "label": "Discretionary",
+    "status": "ok",
+    "n": 1623,
+    "n_dates": 489,
+    "mean_excess": -0.020024574528410187,
+    "t_naive": -2.9188563749556495,
+    "t_clustered": -1.6021674169237143,
+    "hit_rate": 0.42513863216266173
+   },
+   {
+    "label": "Single-name conviction buys",
+    "status": "ok",
+    "n": 1002,
+    "n_dates": 427,
+    "mean_excess": -0.022530585681653077,
+    "t_naive": -2.7502424661621205,
+    "t_clustered": -1.7953579966715765,
+    "hit_rate": 0.4251497005988024
+   }
+  ],
+  "committee": [
+   {
+    "label": "In committee jurisdiction",
+    "status": "ok",
+    "n": 138,
+    "n_dates": 44,
+    "mean_excess": -0.03850673090908104,
+    "t_naive": -1.9415871300290906,
+    "t_clustered": -1.0963360113623344,
+    "hit_rate": 0.39855072463768115
+   },
+   {
+    "label": "Outside jurisdiction",
+    "status": "ok",
+    "n": 3509,
+    "n_dates": 361,
+    "mean_excess": -0.00820316677556335,
+    "t_naive": -1.5528633291193117,
+    "t_clustered": -0.4980754672570464,
+    "hit_rate": 0.42918210316329436
+   }
+  ]
+ },
+ "combined": {
+  "n": 7768,
+  "events": [
+   {
+    "label": "Both chambers, all purchases",
+    "status": "ok",
+    "n": 6425,
+    "n_dates": 624,
+    "mean_excess": -0.011670019504456518,
+    "t_naive": -3.302460895108347,
+    "t_clustered": -1.0291849163869775,
+    "hit_rate": 0.42474708171206227
+   },
+   {
+    "label": "Both chambers, discretionary",
+    "status": "ok",
+    "n": 1887,
+    "n_dates": 547,
+    "mean_excess": -0.017200904892882105,
+    "t_naive": -2.7529134328609186,
+    "t_clustered": -1.4821776767557826,
+    "hit_rate": 0.43349231584525705
+   }
+  ]
+ }
+}

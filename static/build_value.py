@@ -258,64 +258,97 @@ def render_insider(factors: dict, pf: dict) -> str:
   </div>"""
 
 
-def render_senate(sen: dict) -> str:
-    st = sen.get("event_study") or {}
-    cov = sen.get("coverage", {})
-    holdings = sen.get("holdings", [])
-    rows = "".join(
-        f'<tr><td class="tk">{esc(h["ticker"])}</td><td>{esc(str(h["name"])[:34])}</td>'
-        f'<td class="sc-sector">{esc(h["index"])}</td>'
-        f'<td>{h["senators"]}</td><td>{h["n_buys"]}</td>'
-        f'<td>{esc(h["last_trade"])}</td><td>{esc(h["last_filed"])}</td></tr>'
-        for h in holdings)
-    if not st:
+def render_senate(sen: dict, dil: dict | None = None) -> str:
+    """Congressional trading: what it actually is, and whether it pays."""
+    if not dil:
         return ""
+    sn, ho = dil.get("senate", {}), dil.get("house", {})
+    comb = dil.get("combined", {})
+
+    def ev(block, label):
+        for e in (block.get("events", []) + block.get("committee", [])):
+            if e and e.get("label") == label and e.get("status") == "ok":
+                return e
+        return None
+
+    def row(block, chamber, label, shown):
+        e = ev(block, label)
+        if not e:
+            return ""
+        cls = "sc-pos" if e["mean_excess"] > 0 else "sc-neg"
+        return (f'<tr><td>{esc(chamber)}</td><td>{esc(shown)}</td>'
+                f'<td>{e["n"]:,}</td><td>{e["n_dates"]}</td>'
+                f'<td class="{cls}">{e["mean_excess"]:+.2%}</td>'
+                f'<td>{e["t_clustered"]:+.2f}</td><td>{e["hit_rate"]:.0%}</td></tr>')
+
+    rows = "".join([
+        row(sn, "Senate", "All household purchases", "Everything"),
+        row(sn, "Senate", "Bulk account days (5+ names at once)", "Bulk account days"),
+        row(sn, "Senate", "Discretionary (1-2 names that day)", "Discretionary (1–2 names)"),
+        row(sn, "Senate", "Single-name conviction buys", "Single-name conviction"),
+        row(sn, "Senate", "In committee jurisdiction", "In committee jurisdiction"),
+        row(ho, "House", "All House purchases", "Everything"),
+        row(ho, "House", "Bulk account days", "Bulk account days"),
+        row(ho, "House", "Discretionary", "Discretionary (1–2 names)"),
+        row(ho, "House", "Single-name conviction buys", "Single-name conviction"),
+        row(ho, "House", "In committee jurisdiction", "In committee jurisdiction"),
+        row(comb, "Both", "Both chambers, discretionary", "Discretionary, pooled"),
+    ])
+
     return f"""
   <div class="sc-section">
-    <h2>What senators bought</h2>
-    <p class="lede">Every Periodic Transaction Report filed with the Senate since 2023,
-    parsed from the official eFD system and matched to the small and mid-cap universe.
-    {cov.get('reports_searched', 0)} reports were searched;
-    {cov.get('reports_unparseable', 0)} are scanned paper filings with no machine-readable
-    table and are counted rather than quietly dropped.</p>
-    <div class="sc-charts">
-      <div class="sc-card">
-        <h3>Does following them work?</h3>
-        <p class="sub">6-month return from the <em>disclosure</em> date — the earliest anyone
-        outside the Senate could act</p>
-        <div class="sc-bigz">{st['mean_excess_vs_ijr']:+.1%}
-          <span class="sc-bigz-tag">excess vs the small-cap index</span></div>
-        <p class="sc-note" style="margin-top:8px">On {st['n_events']} purchases — but those
-        fall on only <strong>{st['n_distinct_filing_dates']} distinct filing dates</strong>
-        from {st['n_distinct_senators']} senators, and one senator disclosing six names in a
-        day is one decision, not six. Treating the events as independent gives
-        t = {st['t_naive']:+.2f}; clustering by filing date, the honest figure, gives
-        <strong>t = {st['t_clustered_by_date']:+.2f}</strong>. It beat the index
-        {st['hit_rate']:.0%} of the time. There is no edge here that this data can
-        demonstrate.</p>
-      </div>
-      <div class="sc-card">
-        <h3>The disclosure lag</h3>
-        <p class="sub">days between the trade and the filing that reveals it</p>
-        <div class="sc-bigz">{st['median_lag_days']:.0f}<span class="sc-bigz-tag">days, median</span></div>
-        <p class="sc-note" style="margin-top:8px">The 90th percentile is
-        <strong>{st['p90_lag_days']:.0f} days</strong>. The statute allows 45; the tail runs
-        well past it. By the time a purchase is public it is typically a month old and
-        sometimes more than a year, so the price that matters has already moved.</p>
-      </div>
+    <h2>Following Congress — what the disclosures actually are</h2>
+    <p class="lede">Every Senate Periodic Transaction Report since 2023 from the official eFD
+    system, plus {ho.get('household_decisions', 0):,} House purchases parsed out of
+    {ho.get('n_filers', 0)} members' PDF filings. Before asking whether it pays, it is worth
+    establishing what these filings record — because it is mostly not stock picking.</p>
+
+    <div class="sc-tiles">
+      <div class="sc-tile"><div class="k">Largest single-day basket</div>
+        <div class="v">{sn.get('largest_single_day_basket', 0)}</div>
+        <div class="s">different stocks bought by one senator on one day — a portfolio
+        being moved, not a view on a company</div></div>
+      <div class="sc-tile"><div class="k">House trades via a named manager</div>
+        <div class="v">{ho.get('share_via_named_manager', 0):.0%}</div>
+        <div class="s">filings that name the managing institution in "Subholding Of"</div></div>
+      <div class="sc-tile"><div class="k">Senate decisions from bulk days</div>
+        <div class="v">{sn.get('share_from_bulk_days', 0):.0%}</div>
+        <div class="s">come from days with 5+ simultaneous purchases</div></div>
+      <div class="sc-tile"><div class="k">Household double-count</div>
+        <div class="v">{sn.get('household_inflation', 1):.2f}×</div>
+        <div class="s">Self, Spouse and Joint accounts buying the same stock the same day
+        is one decision filed three times</div></div>
     </div>
-    <p class="lede" style="margin-top:16px">The {len(holdings)} small and mid caps disclosed
-    in the last {sen.get('window_months', 12)} months, most-supported first:</p>
+
+    <p class="lede" style="margin-top:18px">Returns below are measured from the
+    <strong>filing</strong> date, never the trade date — the trade date is not observable to
+    anyone outside the filer's household. Each row is clustered by filing date, because one
+    member disclosing six names in a day is one decision, not six.</p>
     <div class="sc-table-wrap"><table class="sc-table">
-      <thead><tr><th>Ticker</th><th>Company</th><th>Index</th><th>Senators</th>
-      <th>Disclosures</th><th>Last trade</th><th>Disclosed</th></tr></thead>
+      <thead><tr><th>Chamber</th><th>Cut</th><th>Events</th><th>Distinct dates</th>
+      <th>6m excess vs SPY</th><th>t</th><th>Periods won</th></tr></thead>
       <tbody>{rows}</tbody>
     </table></div>
-    <p class="sc-note">Note how thin this is. Across three and a half years only
-    {cov.get('smallmid_purchases', 0)} senator purchases touch a small or mid cap at all, and
-    no name has ever been bought by more than two senators. Senators overwhelmingly buy large
-    caps; there is no cluster signal to find down here, and the position sizes disclosed are
-    a few thousand to a few hundred thousand dollars — personal savings, not conviction.</p>
+
+    <div class="sc-warn"><strong>There is no edge here — and the sign is negative.</strong>
+    Following congressional purchases underperformed the S&amp;P 500, and it got
+    <em>worse</em> the harder we filtered for conviction: House single-name buys returned
+    {(ev(ho, 'Single-name conviction buys') or {}).get('mean_excess', 0):+.2%} over the
+    following six months. The Senate's in-jurisdiction cut looks positive but rests on 19
+    events across 10 dates; the House, with 138 events on 44 dates, shows
+    {(ev(ho, 'In committee jurisdiction') or {}).get('mean_excess', 0):+.2%}. The apparent
+    Senate result is noise.</div>
+
+    <p class="sc-note"><strong>Why the committee test is weak, stated plainly.</strong> The
+    public roster gives <em>current</em> assignments, so a trade is matched against the
+    committees its author sits on today rather than on the day of the trade, and members who
+    have since left office drop out entirely — including the single largest small-cap trader
+    in the Senate data. The jurisdiction map from committee to industry is also deliberately
+    coarse, and committees with economy-wide remits (Appropriations, Finance, Budget) are
+    mapped to nothing because they cannot discriminate between trades.
+    <br><br><strong>And the disclosure lag.</strong> Median 28–30 days in both chambers;
+    the Senate's 90th percentile is 586 days. By the time a purchase is public the price
+    that mattered has long since moved.</p>
   </div>"""
 
 
@@ -595,6 +628,8 @@ def build_page(out: Path) -> Path:
     portfolio = json.loads(pf_path.read_text()) if pf_path.exists() else None
     sen_path = DATA / "senate_portfolio.json"
     senate = json.loads(sen_path.read_text()) if sen_path.exists() else None
+    dil_path = DATA / "congress_diligence.json"
+    diligence = json.loads(dil_path.read_text()) if dil_path.exists() else None
 
     results = [r for r in factors["results"] if r.get("status") == "ok"]
     neutral = [r for r in results if r.get("size_neutral")]
@@ -655,7 +690,7 @@ def build_page(out: Path) -> Path:
         n_periods=factors["n_rebalances"],
         first_date=esc(dates[0] if dates else ""), last_date=esc(dates[-1] if dates else ""),
         insider=render_insider(factors, portfolio) if portfolio else "",
-        senate=render_senate(senate) if senate else "",
+        senate=render_senate(senate, diligence) if diligence else "",
         portfolio=render_portfolio(portfolio) if portfolio else "",
         size_evidence=render_size_evidence(surv),
         factors=render_factors(factors),

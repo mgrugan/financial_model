@@ -88,6 +88,14 @@ jobs:
         run: python scripts/build_senate_portfolio.py
         continue-on-error: true
 
+      - name: Pull House of Representatives disclosures
+        run: python scripts/download_house.py
+        continue-on-error: true      # 1,800 PDFs; the rest of the study stands without it
+
+      - name: Congressional trading due diligence
+        run: python scripts/congress_diligence.py
+        continue-on-error: true
+
       - name: Sanity-check the artefacts before committing
         run: |
           python - <<'PY'
@@ -174,7 +182,10 @@ jobs:
                   data/smallcap_null.json data/smallcap_inventory.json \
                   data/smallcap_universe.json data/value_factors.json \
                   data/value_models.json data/value_screen.json \
-                  data/value_survivorship.json data/value_portfolio.json
+                  data/value_survivorship.json data/value_portfolio.json \
+                  data/senate_transactions.json data/senate_portfolio.json \
+                  data/house_transactions.json data/congress_diligence.json \
+                  data/smallmid_universe.json
           if git diff --cached --quiet; then
             echo "no change"
           else
