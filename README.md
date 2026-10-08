@@ -497,6 +497,132 @@ expected return cannot be underwritten from earnings the way the value portfolio
 could — it holds companies that are not cheap, and four of thirty are unprofitable
 on a five-year average. The case for it rests entirely on the backtested signal.
 
+## One year and five years
+
+The same models, asked how long to hold. Published at `longterm.html`, alongside a
+five-year record from the filings for every company in the book.
+
+### The arithmetic of a long horizon
+
+A fourteen-year price history is not fourteen years of evidence about a five-year
+hold. Non-overlapping five-year windows are what inference can use, and there are
+about three of them:
+
+| Hold | Rebalances | Independent windows | Reliable? |
+|---|---|---|---|
+| 6 months | 28 | 28.5 | yes |
+| 1 year | 27 | 14.2 | yes |
+| 5 years | 19 | **2.9** | **no** |
+
+Overlapping windows make the t-statistic look better than the sample deserves, so
+the long arms use Newey–West standard errors at the overlap lag, and the 5-year arm
+is marked non-inferential in the artefact itself — `run_long_horizons.py` refuses
+to call anything significant there, and the workflow asserts that flag has not
+flipped.
+
+### Holding the same rule for longer
+
+One portfolio — 30 names ranked on insider buying, no valuation filter — held for
+each period, annualised, against a size-matched slice of the universe:
+
+| Hold | Portfolio | Universe | vs size-match | t naive | t Newey–West | Hit rate |
+|---|---|---|---|---|---|---|
+| 6 months | +27.2% | +18.6% | +4.1% | +1.96 | +1.96 | 61% |
+| **1 year** | **+26.6%** | +16.8% | **+5.5%** | +3.51 | **+3.67** | 70% |
+| 5 years | +22.6% | +13.9% | +8.9% | +1.67 | +2.19 | 68% |
+
+**One year is the sweet spot.** It beats the 6-month version on both excess return
+and significance while turning the book over half as often — the 6-month arm is
+within noise of zero at t = +1.96 on a two-tailed p of 0.060. The 5-year row shows
+the biggest number and is the one not to trust: 2.9 independent windows cannot
+separate +8.9% a year from luck, and two windows (mid-2016 and end-2016) carry
+excess returns of +309% and +538% over the five years that followed, which is to
+say the row is mostly a report on the 2016–2021 small-cap melt-up.
+
+### Factors at each horizon
+
+Long-short quintile spreads, **sector- and size-neutral** — the strict column, the
+one that strips the size artifact. Newey–West t at the overlap lag. The FDR family
+is all 40 tests per horizon (both neutralisation modes) at α = 0.10; bold marks a
+survivor *in this column*:
+
+| Factor | 6m | 1y | 5y |
+|---|---|---|---|
+| Insider buy share of flow | +2.1% (t +1.97) | +4.8% (t +2.16) | +30.5% (t +1.78) |
+| Insider buyers | +2.1% (t +2.00) | +3.4% (t +1.84) | +25.3% (t +1.46) |
+| Earnings / price | +1.0% (t +0.88) | +2.8% (t +1.67) | +13.3% (t +1.28) |
+| Graham criteria passed | −3.0% (t −1.92) | **−7.1% (t −2.84)** | −65.7% (t −2.09) |
+| Low debt / equity | −2.3% (t −1.89) | −5.6% (t −2.55) | −40.1% (t −2.87) |
+| Burry composite | −5.1% (t −2.25) | −10.6% (t −2.52) | −104.0% (t −2.59) |
+| Low volatility | −5.0% (t −2.26) | −11.0% (t −2.25) | −61.9% (t −2.13) |
+
+Lengthening the horizon does not rescue value; it sharpens the same verdict. Every
+value, quality and safety factor that was mildly negative at six months is more
+negative at a year, and insider buying is the only factor positive at every horizon.
+
+Read the bolding carefully, because the counts differ by column. Across the whole
+40-test family, **6 survive FDR at six months and 8 at one year**, against one
+placebo hit — but most of those survivors are the *sector-neutral-only* versions of
+the insider factors (insider buy share at 6m: +5.6%, t = +5.34). Inside the strict
+sector-**and**-size-neutral column above, exactly one test clears correction at one
+year, and it is Graham's own scorecard pointing the wrong way. The insider factors
+stay positive there but fall inside the noise. At five years **nothing** survives in
+either column, which is what an underpowered arm should look like.
+
+### Why the technical models had to change shape
+
+The per-ticker walk-forward design cannot be extended to these horizons. It needs
+many independent observations *inside one company's history*, and a fixed-horizon
+label consumes them:
+
+| Horizon | Label length | Effective observations | Smallest AUC resolvable |
+|---|---|---|---|
+| 1 day | 1 bar | 1,512 | 0.542 |
+| 1 week | 5 bars | 302 | 0.593 |
+| 1 year | 252 bars | 8.7 | **1.047 — impossible** |
+| 5 years | 1,260 bars | 1.7 | **1.723 — impossible** |
+
+An AUC above 1 is not a probability. No amount of compute fixes that — the
+information is not in the sample. So the technical models are extended the only way
+that works: the same features (6-month momentum, short-term reversal, 63-day
+volatility, drawdown, price vs the 200-day average), ranked *across* the 528
+companies on each rebalance date rather than through one company's calendar. The
+cross-section supplies the observations the calendar cannot, and those five
+features appear in the factor table above on the same footing as the fundamentals —
+where momentum and trend are flat at a year and sharply negative at five.
+
+### Qualitative due diligence, from the filings
+
+Every company carries a five-year record built from the EDGAR facts already
+downloaded: revenue and earnings CAGR, operating margin and its trend, mean ROE,
+share-count CAGR, profitable years, earnings volatility relative to its own mean,
+free-cash-flow positive years, and leverage with its trend. Eight risk flags are
+derived from it. Across 526 companies:
+
+| Flag | Threshold | Companies |
+|---|---|---|
+| Erratic earnings | swings exceed their own mean | 189 |
+| Margin compressing | operating margin trend < −0.5pp/yr | 134 |
+| Loss years | unprofitable in ≥ 2 of 5 | 133 |
+| Heavy dilution | share count > +3%/yr | 106 |
+| Leverage rising | debt/equity trend > +0.05/yr | 105 |
+| Cash burn | FCF negative in most years | 63 |
+| Revenue shrinking | 5-year revenue CAGR < 0 | 56 |
+| Thin history | fewer than 4 comparable years | 38 |
+
+One measurement bug here is worth recording because it was invisible in the output.
+Balance-sheet items are *instants*, filed every quarter, so taking "the last six
+readings" to compute a five-year rate actually spans eighteen months. Share-count
+growth was being labelled a 5-year CAGR while measuring an 18-month one: n = 105
+series, median −0.5%. Sampling one reading per fiscal year instead gives n = 495
+and a median of −0.0%, and the dilution flag goes from 13 companies to 106. The
+flow items (revenue, earnings, cash flow) were never affected because they are
+already annual durations.
+
+The profiles are published as a reading aid, not a second signal. They are not
+backtested, and nothing in the portfolio ranks on them — they exist so that a name
+arriving on an insider-buying signal can be read as a business before it is bought.
+
 ## What senators bought
 
 Every Senate Periodic Transaction Report since 2023, parsed from the official
@@ -667,8 +793,31 @@ dashboard/
   components.py           cards, meters, tables
   layout.py               page structure and tab rendering
   callbacks.py            interactivity
+smallcaps/
+  universe.py             S&P 600/400 constituent scraping (shape-identified tables)
+  data.py                 multi-ticker Yahoo client, split-artefact trimming
+  screen.py               stage-1 walk-forward screen, Benjamini-Hochberg, bootstrap CIs
+value/
+  edgar.py                SEC EDGAR companyfacts client, per-period tag fallbacks
+  pit.py                  point-in-time snapshots; filing-date and dual-class guards
+  metrics.py              Graham criteria, Graham number, NCAV, Burry EV multiples
+  quality.py              five-year qualitative record and risk flags from filings
+  panel.py                the stock-period panel; 6m / 1y / 5y forward returns
+  factors.py              quintile spreads, Newey-West t, sector/size neutralisation
+  models.py               cross-sectional logistic / gradient-boosted rankers
+insider/
+  form345.py              Form 345 bulk datasets + live EDGAR Form 4 ingestion
+  signal.py               open-market (code P) purchase aggregation per period
+  recent.py               live top-up for the current screen date
+congress/
+  senate.py               Senate eFD periodic transaction reports
+  house.py                House clerk disclosures (PDF text extraction)
+  committees.py           chamber-aware committee assignment matching
 static/
   build.py                renders every view to a static site
+  build_smallcaps.py      the per-ticker technical study page
+  build_value.py          the 6-month value study page
+  build_longterm.py       the 1-year / 5-year page with per-company due diligence
   render_html.py          Dash component tree -> HTML
   site.js                 client: tab/model/theme switching, Plotly wiring
   static.css              controls the served app gets from Dash
@@ -676,11 +825,20 @@ scripts/
   run_backtest.py         offline walk-forward run
   report.py               terminal report
   smoke_test.py           end-to-end verification against live data
+  download_*.py           prices, EDGAR fundamentals, Form 4s, congressional filings
+  build_value_panel.py    assembles the point-in-time panel
+  run_value_factors.py    the 6-month factor tests
+  run_long_horizons.py    the same factors at 6m / 1y / 5y, with window accounting
+  build_dd_profiles.py    per-company qualitative profiles
+  build_portfolio.py      the shipped buy list and its backtest
 data/
   backtest.json           committed walk-forward track record
+  value_factors_long.json the three-horizon factor results
+  dd_profiles.json        526 per-company five-year records
 .github/workflows/
   dashboard.yml           hourly build + Pages deploy
   backtest.yml            weekly walk-forward refresh
+  smallcaps.yml           weekly small-cap, value, insider and congressional refresh
 ```
 
 ---

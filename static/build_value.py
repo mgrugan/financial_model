@@ -560,6 +560,7 @@ PAGE = """<!DOCTYPE html>
     <div class="sc-crumbs">
       <a href="index.html">&larr; Bitcoin dashboard</a>
       <a href="smallcaps.html">&larr; Small-cap technical study</a>
+      <a href="longterm.html">1-year &amp; 5-year horizons &rarr;</a>
       <span>·</span><span>Rebuilt {generated}</span>
       <button class="btn" id="theme-button" style="margin-left:auto">Light</button>
     </div>

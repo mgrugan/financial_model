@@ -75,6 +75,18 @@ jobs:
       - name: Run the cross-sectional models
         run: python scripts/run_value_models.py
 
+      # The same factors held for a year and five years. Split out from
+      # run_value_factors.py because the five-year arm can only ever see three
+      # independent windows -- it is reported, but never called significant.
+      - name: Test the value factors at 1-year and 5-year horizons
+        run: python scripts/run_long_horizons.py
+
+      # Per-company qualitative record from the filings already downloaded:
+      # five years of growth, margin, ROE, dilution and leverage. Cheap, because
+      # it re-reads the EDGAR cache rather than the network.
+      - name: Build the per-company due-diligence profiles
+        run: python scripts/build_dd_profiles.py
+
       - name: Measure the survivorship bias
         run: python scripts/measure_survivorship.py
 
@@ -170,8 +182,42 @@ jobs:
           assert str(ins["filed"].max()) >= (
               dt.date.today() - dt.timedelta(days=45)).isoformat(), (
               "insider data is stale; the recent Form 4 top-up did not run")
+          # Long-horizon arm. The five-year window is the one that can lie by
+          # construction: a fourteen-year span holds under three independent
+          # five-year windows, so the run must mark it non-inferential. If that
+          # flag ever flips, the page would start presenting three draws as
+          # evidence.
+          long = json.loads(pathlib.Path("data/value_factors_long.json").read_text())
+          for horizon in ("6m", "1y", "5y"):
+              assert horizon in long["horizons"], f"{horizon} arm missing"
+          assert long["horizons"]["5y"]["inferential"] is False, (
+              "the 5-year arm claims enough independent windows for inference — "
+              "check independent_windows(); it cannot have more than ~3")
+          assert long["horizons"]["1y"]["independent_windows"] >= 8, (
+              "the 1-year arm lost independent windows — the price history was "
+              "probably truncated")
+          for horizon, arm in long["horizons"].items():
+              n_ok = len([r for r in arm["results"] if r.get("status") == "ok"])
+              assert n_ok >= 15, f"{horizon}: only {n_ok} factor tests ran"
+
+          dd = json.loads(pathlib.Path("data/dd_profiles.json").read_text())
+          assert len(dd["profiles"]) >= 400, (
+              f"only {len(dd['profiles'])} due-diligence profiles built")
+          # Share-count growth is sampled one reading per fiscal year. If it is
+          # ever computed from consecutive quarterly balance sheets instead, the
+          # "5-year" rate is really an 18-month one and the median moves far off
+          # zero. Catch that here rather than in the dilution flags.
+          dil = [p["share_count_cagr_5y"] for p in dd["profiles"].values()
+                 if p.get("share_count_cagr_5y") is not None]
+          assert len(dil) >= 300, f"only {len(dil)} share-count series"
+          med = sorted(dil)[len(dil) // 2]
+          assert -0.05 < med < 0.08, (
+              f"median share-count CAGR {med:.1%} — the series is probably "
+              "sampled quarterly rather than annually")
+
           print(f"OK: value panel {factors['n_stock_periods']} stock-periods, "
-                f"{len(ok)} factor tests, screen {screen['n']} companies")
+                f"{len(ok)} factor tests, screen {screen['n']} companies, "
+                f"{len(dd['profiles'])} DD profiles")
           PY
 
       - name: Commit if it changed
@@ -185,7 +231,8 @@ jobs:
                   data/value_survivorship.json data/value_portfolio.json \
                   data/senate_transactions.json data/senate_portfolio.json \
                   data/house_transactions.json data/congress_diligence.json \
-                  data/smallmid_universe.json
+                  data/smallmid_universe.json \
+                  data/value_factors_long.json data/dd_profiles.json
           if git diff --cached --quiet; then
             echo "no change"
           else

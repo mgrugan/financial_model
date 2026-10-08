@@ -608,6 +608,7 @@ PAGE = """<!DOCTYPE html>
     <div class="sc-crumbs">
       <a href="index.html">&larr; Bitcoin model dashboard</a>
       <a href="value.html">Value study &rarr;</a>
+      <a href="longterm.html">Long horizon &rarr;</a>
       <span>·</span><span>Rebuilt {generated}</span>
       <button class="btn" id="theme-button" style="margin-left:auto">Light</button>
     </div>

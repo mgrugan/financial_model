@@ -105,6 +105,18 @@ FACTORS: list[Factor] = [
            True, False, "Insider",
            "Dollars bought scaled by company size, so a $1m purchase counts for "
            "more in a $200m company than a $5bn one."),
+    # --- technical, used cross-sectionally ------------------------------
+    Factor("mom_12m", "Momentum (6-month)", "tech_mom_126d", True, False,
+           "Technical", "The classic medium-term momentum anomaly."),
+    Factor("reversal_1m", "Short-term reversal", "tech_mom_21d", False, False,
+           "Technical", "Last month's losers, which tend to bounce."),
+    Factor("low_vol", "Low volatility", "tech_vol_63d", False, False,
+           "Technical", "The low-volatility anomaly: calmer stocks have "
+           "historically returned more per unit of risk."),
+    Factor("drawdown", "Shallow drawdown", "tech_drawdown", True, False,
+           "Technical", "Distance below the running peak."),
+    Factor("trend_200d", "Above the 200-day average", "tech_px_vs_sma_200", True,
+           False, "Technical", "Long-run trend-following."),
 ]
 
 
@@ -183,6 +195,8 @@ def _residualise_on_size(scores: pd.Series, period: pd.DataFrame) -> pd.Series:
 def factor_scores(period: pd.DataFrame, factor: Factor,
                   sector_neutral: bool, size_neutral: bool = False) -> pd.Series:
     """Signed, sign-corrected percentile scores where 1.0 = cheapest."""
+    if factor.column not in period:
+        return pd.Series(np.nan, index=period.index)
     eligible = period
     if factor.ev_based:
         eligible = eligible[eligible["ev_applicable"]]
@@ -203,12 +217,35 @@ def factor_scores(period: pd.DataFrame, factor: Factor,
     return scores
 
 
-def _spread_and_ic(period: pd.DataFrame, scores: pd.Series) -> dict[str, float] | None:
-    mask = scores.notna() & period["fwd_return"].notna()
+def newey_west_t(series: np.ndarray, lag: int) -> float:
+    """t-statistic with a Newey-West correction for overlapping windows.
+
+    Consecutive 1-year returns measured on a semi-annual grid share six months,
+    and consecutive 5-year returns share four and a half years. Those are not
+    independent draws, and the ordinary standard error treats them as if they
+    were -- inflating the t-statistic by roughly the square root of the overlap.
+    """
+    n = len(series)
+    if n < 4:
+        return float("nan")
+    x = series - series.mean()
+    gamma0 = float(np.dot(x, x) / n)
+    var = gamma0
+    for k in range(1, min(lag, n - 1) + 1):
+        gamma = float(np.dot(x[k:], x[:-k]) / n)
+        var += 2.0 * (1.0 - k / (lag + 1.0)) * gamma
+    if var <= 0:
+        return float("nan")
+    return float(series.mean() / np.sqrt(var / n))
+
+
+def _spread_and_ic(period: pd.DataFrame, scores: pd.Series,
+                   return_col: str = "fwd_return") -> dict[str, float] | None:
+    mask = scores.notna() & period[return_col].notna()
     if mask.sum() < MIN_NAMES_PER_PERIOD:
         return None
     s = scores[mask]
-    r = period.loc[mask, "fwd_return"]
+    r = period.loc[mask, return_col]
 
     # Quintiles by score; bucket 5 is the cheapest end.
     try:
@@ -232,12 +269,14 @@ def _spread_and_ic(period: pd.DataFrame, scores: pd.Series) -> dict[str, float] 
 
 
 def run_factor(panel: pd.DataFrame, factor: Factor,
-               sector_neutral: bool, size_neutral: bool = False) -> dict[str, Any]:
+               sector_neutral: bool, size_neutral: bool = False,
+               return_col: str = "fwd_return", horizon_months: int = 6,
+               rebalance_months: int = 6) -> dict[str, Any]:
     """Period-by-period spread and IC, then inference on the period series."""
     per_period = []
     for date, period in panel.groupby("date"):
         scores = factor_scores(period, factor, sector_neutral, size_neutral)
-        row = _spread_and_ic(period, scores)
+        row = _spread_and_ic(period, scores, return_col)
         if row:
             per_period.append({"date": date, **row})
 
@@ -250,7 +289,13 @@ def run_factor(panel: pd.DataFrame, factor: Factor,
     n = len(spread)
 
     t_spread = float(np.mean(spread) / (np.std(spread, ddof=1) / np.sqrt(n)))
-    p_spread = float(2.0 * stats.t.sf(abs(t_spread), df=n - 1))
+    # Overlap in rebalance units: a 12-month horizon on a 6-month grid overlaps
+    # one period, a 60-month horizon overlaps nine.
+    overlap = max(int(round(horizon_months / rebalance_months)) - 1, 0)
+    t_nw = newey_west_t(spread, overlap) if overlap else t_spread
+    n_independent = n / max(overlap + 1, 1)
+    p_spread = float(2.0 * stats.t.sf(abs(t_nw if np.isfinite(t_nw) else t_spread),
+                                      df=max(n_independent - 1, 1)))
     t_ic = float(np.mean(ic) / (np.std(ic, ddof=1) / np.sqrt(n)))
     p_ic = float(2.0 * stats.t.sf(abs(t_ic), df=n - 1))
 
@@ -278,7 +323,12 @@ def run_factor(panel: pd.DataFrame, factor: Factor,
         "mean_names": float(frame["n"].mean()),
         "mean_spread": float(np.mean(spread)),
         "sd_spread": float(np.std(spread, ddof=1)),
-        "t_spread": t_spread,
+        "t_spread": t_nw if np.isfinite(t_nw) else t_spread,
+        "t_spread_naive": t_spread,
+        "t_spread_newey_west": t_nw,
+        "overlap_periods": overlap,
+        "n_independent": float(n_independent),
+        "horizon_months": horizon_months,
         "p_spread": p_spread,
         "hit_rate": float(np.mean(spread > 0)),
         "mean_ic": float(np.mean(ic)),

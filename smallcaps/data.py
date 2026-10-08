@@ -135,7 +135,7 @@ def _cache_file(ticker: str) -> Path:
     return SMALLCAP_CACHE / f"{ticker.replace('/', '_')}.pkl"
 
 
-def fetch_history(ticker: str, years: int = 12, ttl: int = 86_400,
+def fetch_history(ticker: str, years: int = 15, ttl: int = 86_400,
                   force: bool = False) -> pd.DataFrame | None:
     """Adjusted daily OHLCV for one ticker, disk-cached."""
     path = _cache_file(ticker)
@@ -171,7 +171,7 @@ def _finalise(frame: pd.DataFrame) -> pd.DataFrame | None:
 # ---------------------------------------------------------------------------
 # Bulk download
 # ---------------------------------------------------------------------------
-def download_many(tickers: Iterable[str], years: int = 12, workers: int = 6,
+def download_many(tickers: Iterable[str], years: int = 15, workers: int = 6,
                   progress: Any = None) -> dict[str, pd.DataFrame]:
     """Fetch many tickers concurrently. Failures are dropped, never raised."""
     tickers = list(tickers)

@@ -55,6 +55,9 @@ jobs:
       - name: Build small-cap value study
         run: python -m static.build_value --out site
 
+      - name: Build long-horizon page
+        run: python -m static.build_longterm --out site
+
       - name: Check the build produced something usable
         run: |
           test -f site/index.html || { echo "no index.html"; exit 1; }
@@ -69,7 +72,18 @@ jobs:
           test -f site/value.html || { echo "no value.html"; exit 1; }
           v=$(stat -c%s site/value.html)
           test "$v" -gt 30000 || { echo "value.html suspiciously small: $v"; exit 1; }
-          echo "index.html ${bytes} bytes, ${panels} panels, smallcaps.html ${sc} bytes, value.html ${v} bytes"
+          test -f site/longterm.html || { echo "no longterm.html"; exit 1; }
+          lt=$(stat -c%s site/longterm.html)
+          test "$lt" -gt 40000 || { echo "longterm.html suspiciously small: $lt"; exit 1; }
+          # The five-year arm must always be labelled as description rather than
+          # evidence; a build that drops the caveat is worse than no page. Two
+          # independent markers: the prose warning, and the "Reliable? no" cell
+          # the row only gets when its independent-window count is too low.
+          grep -q "One year is the sweet spot" site/longterm.html || {
+            echo "longterm.html lost its 5-year prose caveat"; exit 1; }
+          grep -q "<strong>no</strong>" site/longterm.html || {
+            echo "longterm.html no longer flags any horizon unreliable"; exit 1; }
+          echo "index.html ${bytes} bytes, ${panels} panels, smallcaps.html ${sc} bytes, value.html ${v} bytes, longterm.html ${lt} bytes"
 
       - uses: actions/upload-pages-artifact@v3
         with:

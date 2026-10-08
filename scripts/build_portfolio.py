@@ -163,7 +163,8 @@ def pick(frame: pd.DataFrame, n: int = N_HOLDINGS,
 # ---------------------------------------------------------------------------
 # Historical track record of the identical rule
 # ---------------------------------------------------------------------------
-def _size_matched_benchmark(period: pd.DataFrame, held: pd.DataFrame) -> float:
+def _size_matched_benchmark(period: pd.DataFrame, held: pd.DataFrame,
+                            return_col: str = "fwd_return") -> float:
     """Mean return of the universe, reweighted to the portfolio's size profile.
 
     Comparing against the plain universe average credits the portfolio for any
@@ -173,11 +174,11 @@ def _size_matched_benchmark(period: pd.DataFrame, held: pd.DataFrame) -> float:
     other companies in its own size decile, so what is left is whatever the
     value rule adds on top of "owns smaller companies".
     """
-    valid = period[period["market_cap"].notna() & period["fwd_return"].notna()]
+    valid = period[period["market_cap"].notna() & period[return_col].notna()]
     if len(valid) < 50:
         return float("nan")
     deciles = pd.qcut(valid["market_cap"].rank(method="first"), 10, labels=False)
-    decile_mean = valid["fwd_return"].groupby(deciles).mean()
+    decile_mean = valid[return_col].groupby(deciles).mean()
     lookup = dict(zip(valid.index, deciles))
     bench = [decile_mean.get(lookup[i]) for i in held.index if i in lookup]
     bench = [b for b in bench if b is not None and np.isfinite(b)]
@@ -186,25 +187,27 @@ def _size_matched_benchmark(period: pd.DataFrame, held: pd.DataFrame) -> float:
 
 def backtest_rule(panel: pd.DataFrame, weights: dict[str, float] | None = None,
                   gates: str = "graham", n_holdings: int = None,
-                  max_per_sector: int | None = MAX_PER_SECTOR) -> dict:
+                  max_per_sector: int | None = MAX_PER_SECTOR,
+                  return_col: str = "fwd_return", periods_per_year: float = 2.0) -> dict:
     n_holdings = n_holdings or N_HOLDINGS
+    panel = panel[panel[return_col].notna()]
     rows = []
     for date, period in panel.groupby("date"):
         pool = eligible(period, gates)
         if len(pool) < n_holdings:
             continue
         held = pick(pool, n=n_holdings, max_per_sector=max_per_sector, weights=weights)
-        if held.empty or held["fwd_return"].isna().all():
+        if held.empty or held[return_col].isna().all():
             continue
-        matched = _size_matched_benchmark(period, held)
+        matched = _size_matched_benchmark(period, held, return_col)
         rows.append({
             "date": date,
             "n_held": int(len(held)),
-            "portfolio": float(held["fwd_return"].mean()),
-            "universe": float(period["fwd_return"].mean()),
-            "excess": float(held["fwd_return"].mean() - period["fwd_return"].mean()),
+            "portfolio": float(held[return_col].mean()),
+            "universe": float(period[return_col].mean()),
+            "excess": float(held[return_col].mean() - period[return_col].mean()),
             "size_matched": matched,
-            "excess_size_matched": float(held["fwd_return"].mean() - matched)
+            "excess_size_matched": float(held[return_col].mean() - matched)
             if np.isfinite(matched) else float("nan"),
         })
     frame = pd.DataFrame(rows)
@@ -219,30 +222,43 @@ def backtest_rule(panel: pd.DataFrame, weights: dict[str, float] | None = None,
     t_exc, p_exc = t_and_p(exc)
     sm = frame["excess_size_matched"].dropna().to_numpy()
     t_sm, p_sm = t_and_p(sm) if len(sm) > 3 else (float("nan"), float("nan"))
+
+    # Holding for longer than the rebalance interval makes consecutive windows
+    # overlap, and the ordinary t-statistic counts the overlap as fresh
+    # evidence. A 1-year hold on a 6-month grid overlaps one period; a 5-year
+    # hold overlaps nine.
+    from value.factors import newey_west_t
+    overlap = max(int(round(2.0 / periods_per_year)) - 1, 0)
+    t_sm_nw = newey_west_t(sm, overlap) if (overlap and len(sm) > 3) else t_sm
     se = float(np.std(port, ddof=1) / np.sqrt(n))
     crit = float(stats.t.ppf(0.975, df=n - 1))
     compounded = float(np.prod(1.0 + port))
-    years = n / 2.0
+    years = n / periods_per_year
 
     return {
         "n_periods": n,
         "mean_period_return": float(np.mean(port)),
-        "annualised": float((1.0 + np.mean(port)) ** 2 - 1.0),
-        "annualised_ci": [float((1.0 + np.mean(port) - crit * se) ** 2 - 1.0),
-                          float((1.0 + np.mean(port) + crit * se) ** 2 - 1.0)],
+        "annualised": float((1.0 + np.mean(port)) ** periods_per_year - 1.0),
+        "annualised_ci": [
+            float((1.0 + np.mean(port) - crit * se) ** periods_per_year - 1.0),
+            float((1.0 + np.mean(port) + crit * se) ** periods_per_year - 1.0)],
         "cagr": float(compounded ** (1.0 / years) - 1.0),
         "mean_excess": float(np.mean(exc)),
-        "excess_annualised": float((1.0 + np.mean(exc)) ** 2 - 1.0),
+        "excess_annualised": float((1.0 + np.mean(exc)) ** periods_per_year - 1.0),
         "t_excess": t_exc, "p_excess": p_exc,
         "hit_rate_vs_universe": float(np.mean(exc > 0)),
         "mean_excess_size_matched": float(np.mean(sm)) if len(sm) else float("nan"),
-        "excess_size_matched_annualised": float((1.0 + np.mean(sm)) ** 2 - 1.0)
-        if len(sm) else float("nan"),
-        "t_excess_size_matched": t_sm, "p_excess_size_matched": p_sm,
+        "excess_size_matched_annualised":
+            float((1.0 + np.mean(sm)) ** periods_per_year - 1.0) if len(sm) else float("nan"),
+        "t_excess_size_matched": t_sm_nw if np.isfinite(t_sm_nw) else t_sm,
+        "t_excess_size_matched_naive": t_sm,
+        "overlap_periods": overlap,
+        "p_excess_size_matched": p_sm,
         "hit_rate_size_matched": float(np.mean(sm > 0)) if len(sm) else float("nan"),
         "worst_period": float(np.min(port)),
         "best_period": float(np.max(port)),
-        "universe_annualised": float((1.0 + frame["universe"].mean()) ** 2 - 1.0),
+        "universe_annualised":
+            float((1.0 + frame["universe"].mean()) ** periods_per_year - 1.0),
         "periods": frame.to_dict("records"),
     }
 
@@ -314,6 +330,26 @@ def main() -> int:
 
     back = backtest_rule(panel_all, BLENDS[HEADLINE_BLEND], gates=HEADLINE_GATES,
                          n_holdings=HEADLINE_N)
+
+    # The same rule held for six months, a year and five years. The annualised
+    # figures are directly comparable; the independent-window count is not, and
+    # it is what decides whether any of them mean anything.
+    from value.panel import HORIZONS_MONTHS, independent_windows
+    horizons = {}
+    print("\nthe same rule, held for longer:", flush=True)
+    for hkey, months in HORIZONS_MONTHS.items():
+        ppy = 12.0 / months
+        b = backtest_rule(panel_all, BLENDS[HEADLINE_BLEND], gates=HEADLINE_GATES,
+                          n_holdings=HEADLINE_N, return_col=f"fwd_{hkey}",
+                          periods_per_year=ppy)
+        b["independent_windows"] = float(independent_windows(months))
+        b["months"] = months
+        horizons[hkey] = b
+        print(f"  {hkey:3s} ({months:2d}m): portfolio {b['annualised']:+6.1%}/yr | "
+              f"universe {b['universe_annualised']:+6.1%}/yr | vs size-matched "
+              f"{b['excess_size_matched_annualised']:+6.1%}/yr "
+              f"(t={b['t_excess_size_matched']:+5.2f}) | {b['n_periods']} rebalances, "
+              f"{b['independent_windows']:.1f} independent", flush=True)
     haircut = abs(surv["benchmarks"][0]["gap_annual"])
     back["survivorship_haircut"] = float(haircut)
     back["annualised_after_haircut"] = float(back["annualised"] - haircut)
@@ -358,6 +394,7 @@ def main() -> int:
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "as_of": screen["as_of"],
         "headline_blend": HEADLINE_BLEND,
+        "horizons": horizons,
         "headline_gates": HEADLINE_GATES,
         "sweep": sweep,
         "variants": {k: {"weights": v["weights"], "backtest": v["backtest"]}

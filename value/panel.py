@@ -32,6 +32,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from btcmodels.features import build_features
+
 from .edgar import Fact
 from .metrics import compute, graham_scorecard, normalized
 from .pit import snapshot
@@ -41,7 +43,41 @@ log = logging.getLogger(__name__)
 # EV is not a meaningful takeover price for these business models.
 EV_EXCLUDED_SECTORS = {"Financials", "Real Estate"}
 
+# Technical signals carried onto the same rows as the fundamentals, so the two
+# families are tested in one cross-sectional framework at every horizon.
+#
+# This is the only form in which the technical models can be asked a long-
+# horizon question at all. The per-ticker walk-forward screen needs many
+# independent observations *within* one company's history, and at a one-year
+# label a fourteen-year history yields about nine -- the smallest AUC that
+# design could resolve is 1.047, which is not a probability. Ranking 500
+# companies against each other on the same date has no such problem: the
+# observations come from the cross-section, not from the calendar.
+#
+# The five chosen are pre-specified rather than mined, each standing for a
+# documented anomaly: medium-term momentum, short-term reversal, low
+# volatility, drawdown and long-run trend.
+TECHNICAL_FEATURES = ["mom_126d", "mom_21d", "vol_63d", "drawdown", "px_vs_sma_200"]
+
 HORIZON_MONTHS = 6
+
+# Forward-return horizons, in months. The panel carries all of them on one row
+# so the expensive part -- rebuilding a point-in-time fundamental snapshot for
+# every company on every rebalance date -- happens once rather than per horizon.
+#
+# The rebalance grid stays semi-annual, which means the longer horizons
+# OVERLAP: consecutive 1-year windows share six months, and consecutive 5-year
+# windows share four and a half years. Overlapping observations are not
+# independent, and at five years the arithmetic is brutal -- fourteen years of
+# history contains fewer than three non-overlapping five-year windows. Every
+# statistic computed at these horizons has to carry that, which is what
+# ``independent_windows`` below is for.
+HORIZONS_MONTHS = {"6m": 6, "1y": 12, "5y": 60}
+
+
+def independent_windows(months: int, span_years: float = 14.25) -> float:
+    """How many genuinely non-overlapping windows the sample contains."""
+    return span_years / (months / 12.0)
 
 
 def rebalance_dates(start: str = "2012-06-30", end: str = "2025-12-31") -> list[str]:
@@ -110,9 +146,23 @@ def build_panel(prices: dict[str, pd.DataFrame],
     names = names or {}
     rows: list[dict[str, Any]] = []
 
+    # Features are causal, so one matrix per ticker can be sliced to any as-of
+    # date without leakage -- and computing it once per ticker rather than once
+    # per ticker per date is the difference between seconds and an hour.
+    tech: dict[str, pd.DataFrame] = {}
+    for ticker, frame in prices.items():
+        try:
+            feats = build_features(frame)
+            keep = [c for c in TECHNICAL_FEATURES if c in feats]
+            if keep:
+                tech[ticker] = feats[keep]
+        except Exception as exc:
+            log.debug("technical features failed for %s: %s", ticker, exc)
+
     for date in dates:
-        fwd_date = (dt.date.fromisoformat(date)
-                    + dt.timedelta(days=int(HORIZON_MONTHS * 30.44))).isoformat()
+        fwd_dates = {k: (dt.date.fromisoformat(date)
+                         + dt.timedelta(days=int(m * 30.44))).isoformat()
+                     for k, m in HORIZONS_MONTHS.items()}
         n_ok = 0
         for ticker, frame in prices.items():
             company_facts = facts.get(ticker)
@@ -121,8 +171,17 @@ def build_panel(prices: dict[str, pd.DataFrame],
 
             raw = _price_on(frame, date, "raw_close")
             adj = _price_on(frame, date, "close")
-            adj_fwd = _price_on(frame, fwd_date, "close")
-            if raw is None or adj is None or adj_fwd is None:
+            if raw is None or adj is None:
+                continue
+            # A name is kept if ANY horizon has a realised return. Requiring all
+            # of them would silently delete the whole last five years of
+            # rebalances from the short-horizon tests, which are the ones with
+            # enough independent windows to say anything.
+            forwards = {}
+            for key, when in fwd_dates.items():
+                nxt = _price_on(frame, when, "close")
+                forwards[f"fwd_{key}"] = (nxt / adj - 1.0) if nxt is not None else None
+            if all(v is None for v in forwards.values()):
                 continue
 
             snap = snapshot(company_facts, date)
@@ -139,6 +198,15 @@ def build_panel(prices: dict[str, pd.DataFrame],
             norm = normalized(history, metrics.get("market_cap", float("nan")),
                               snap.get("net_income"))
 
+            tech_row: dict[str, Any] = {}
+            tf = tech.get(ticker)
+            if tf is not None:
+                stamp = pd.Timestamp(date, tz="UTC")
+                sub = tf.loc[tf.index <= stamp]
+                if not sub.empty and (stamp - sub.index[-1]).days <= 15:
+                    tech_row = {f"tech_{k}": (float(v) if pd.notna(v) else None)
+                                for k, v in sub.iloc[-1].items()}
+
             ins = {}
             if insider is not None and ciks and ticker in ciks:
                 ins = insider.metrics(ciks[ticker], date,
@@ -151,13 +219,15 @@ def build_panel(prices: dict[str, pd.DataFrame],
                 "name": names.get(ticker, ""),
                 "sector": sector,
                 "ev_applicable": sector not in EV_EXCLUDED_SECTORS,
-                "fwd_return": adj_fwd / adj - 1.0,
+                "fwd_return": forwards["fwd_6m"],      # kept for existing callers
+                **forwards,
                 "staleness_days": snap.get("_staleness_days"),
                 "latest_period": snap.get("_latest_period"),
                 "graham_score": card["graham_score"],
                 "n_earnings_years": history["n_years"],
                 **{k: v for k, v in metrics.items() if not k.startswith("_")},
                 **norm,
+                **tech_row,
                 **ins,
                 **{f"chk_{k}": v for k, v in card["checks"].items()},
             }
